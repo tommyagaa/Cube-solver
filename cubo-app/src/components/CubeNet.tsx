@@ -1,4 +1,5 @@
 import type { CubeState, Face } from '../lib/cube/types'
+import { PLACEHOLDER_COLOR } from '../lib/cube/types'
 import { FACE_INPUT_ORDER } from '../lib/cube/faceOrder'
 import '../App.css'
 
@@ -25,6 +26,7 @@ const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, ac
               const tooltip = issueMessages?.[face]?.[idx]
               const tooltipText = tooltip?.join(' • ')
               const isLocked = Boolean(activeFace && face !== activeFace)
+              const displayColor = state[face][idx] === PLACEHOLDER_COLOR ? '#0f172a' : color
               return (
                 <button
                   key={idx}
@@ -32,7 +34,7 @@ const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, ac
                   data-highlighted={isHighlighted ? 'true' : 'false'}
                   data-issue={tooltipText}
                   title={tooltipText}
-                  style={{ backgroundColor: color }}
+                  style={{ backgroundColor: displayColor }}
                   type="button"
                   aria-label={`${face} sticker ${idx}`}
                   disabled={isLocked}

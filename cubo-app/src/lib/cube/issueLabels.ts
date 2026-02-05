@@ -7,4 +7,5 @@ export const ISSUE_LABELS: Record<IssueType, string> = {
   'duplicate-piece': 'Pezzo duplicato',
   orientation: 'Orientamento',
   parity: 'Parita',
+  incomplete: 'Sticker mancanti',
 }

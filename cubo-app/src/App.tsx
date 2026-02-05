@@ -6,7 +6,7 @@ import StateTransferPanel from './components/StateTransferPanel'
 import HistoryPanel from './components/HistoryPanel'
 import FaceWizard from './components/FaceWizard'
 import FaceDiagnostics from './components/FaceDiagnostics'
-import { createSolvedCube, cloneCube } from './lib/cube/state'
+import { createSolvedCube, cloneCube, createEmptyCube } from './lib/cube/state'
 import type { Color, Face, CubeState } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
 import type { ValidationIssue } from './lib/cube/validation'
@@ -14,6 +14,7 @@ import { FACE_INPUT_ORDER } from './lib/cube/faceOrder'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
+const MAX_COLOR_COUNT = 9
 
 const STICKER_INDEXES = Array.from({ length: 9 }, (_, idx) => idx)
 const CENTER_INDEX = 4
@@ -170,6 +171,7 @@ function App() {
   const [selectedColor, setSelectedColor] = useState<Color>('white')
   const [completedFaces, setCompletedFaces] = useState<Set<Face>>(() => new Set(initialCompleted))
   const [activeFace, setActiveFace] = useState<Face>(initialActive)
+  const [guardMessage, setGuardMessage] = useState<string | null>(null)
   const validationIssues = validateCubeState(cube)
   const { highlighted, issueMessages, faceIssues, issuesByFace } = useMemo(() => {
     const highlightMap: Partial<Record<Face, Set<number>>> = {}
@@ -230,6 +232,29 @@ function App() {
     return map
   }, [touched])
 
+  const colorCounts = useMemo(() => {
+    const counts: Partial<Record<Color, number>> = {}
+    palette.forEach((color) => {
+      counts[color] = 0
+    })
+    FACE_INPUT_ORDER.forEach((face) => {
+      cube[face].forEach((color) => {
+        if (counts[color as Color] != null) {
+          counts[color as Color] = (counts[color as Color] ?? 0) + 1
+        }
+      })
+    })
+    return counts
+  }, [cube])
+
+  useEffect(() => {
+    if (!guardMessage || typeof window === 'undefined') {
+      return
+    }
+    const timer = window.setTimeout(() => setGuardMessage(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [guardMessage])
+
   const commitState = (nextState: CubeState, nextTouched: TouchedMap, label: string) => {
     setTimeline((prev) => {
       const base = prev.entries.slice(0, prev.index + 1)
@@ -248,11 +273,34 @@ function App() {
     if (face !== activeFace) {
       return
     }
+    if (index === CENTER_INDEX) {
+      setGuardMessage('I centri del cubo sono fissi: usa i centri solo come riferimento colore.')
+      return
+    }
+    const currentColor = cube[face][index]
+    if (currentColor === selectedColor) {
+      return
+    }
     const next = cloneCube(cube)
     next[face][index] = selectedColor
     const nextTouched = cloneTouchedMap(touched)
     nextTouched[face]?.add(index)
+
+    const potentialCount = (colorCounts[selectedColor] ?? 0) + 1
+    if (potentialCount > MAX_COLOR_COUNT) {
+      setGuardMessage(`Attenzione: avresti ${potentialCount} sticker ${selectedColor}. Libera uno sticker di quel colore prima di confermare il wizard.`)
+    }
+
     commitState(next, nextTouched, `Set ${face}${index} -> ${selectedColor}`)
+  }
+
+  const handleClearCube = () => {
+    const empty = createEmptyCube()
+    const resetTouched = createTouchedMap()
+    commitState(empty, resetTouched, 'Svuota cubo')
+    setCompletedFaces(new Set())
+    setActiveFace('U')
+    setGuardMessage('Hai svuotato il cubo: compila ogni sticker seguendo il wizard.')
   }
 
   const handleReset = () => {
@@ -352,16 +400,21 @@ function App() {
         <p>Scegli il colore attivo</p>
         <div className="swatches">
           {palette.map((color) => (
-            <button
-              key={color}
-              type="button"
-              className={`swatch ${selectedColor === color ? 'swatch-active' : ''}`}
-              style={{ backgroundColor: color }}
-              aria-label={`Seleziona ${color}`}
-              onClick={() => setSelectedColor(color)}
-            />
+            <div key={color} className="swatch-stack">
+              <button
+                type="button"
+                className={`swatch ${selectedColor === color ? 'swatch-active' : ''} ${(colorCounts[color] ?? 0) > MAX_COLOR_COUNT ? 'swatch-over-limit' : ''}`}
+                style={{ backgroundColor: color }}
+                aria-label={`Seleziona ${color}`}
+                onClick={() => setSelectedColor(color)}
+              />
+              <span className={`swatch-counter ${(colorCounts[color] ?? 0) > MAX_COLOR_COUNT ? 'over' : ''}`}>
+                {colorCounts[color] ?? 0}/{MAX_COLOR_COUNT}
+              </span>
+            </div>
           ))}
         </div>
+        {guardMessage && <p className="palette-warning">{guardMessage}</p>}
       </section>
       <div className="actions">
         <button
@@ -370,6 +423,13 @@ function App() {
           onClick={handleReset}
         >
           Reset cubo
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={handleClearCube}
+        >
+          Svuota cubo
         </button>
       </div>
 

@@ -177,6 +177,13 @@ h1 {
   justify-content: center;
 }
 
+.swatch-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .swatch {
   width: 36px;
   height: 36px;
@@ -189,6 +196,27 @@ h1 {
 .swatch-active {
   border-color: #22d3ee;
   box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
+}
+
+.swatch-over-limit {
+  border-color: #f87171;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.35);
+}
+
+.swatch-counter {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.swatch-counter.over {
+  color: #fca5a5;
+}
+
+.palette-warning {
+  margin: 0.75rem 0 0;
+  color: #f87171;
+  font-size: 0.9rem;
 }
 
 .net-wrapper {
@@ -771,4 +799,8 @@ h1 {
 
 .issue-tag.issue-parity {
   color: #f472b6;
+}
+
+.issue-tag.issue-incomplete {
+  color: #fde047;
 }

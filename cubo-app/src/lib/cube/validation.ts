@@ -1,9 +1,9 @@
 import type { CubeState, Face, Color } from './types'
-import { DEFAULT_FACE_COLORS, FACES } from './types'
+import { DEFAULT_FACE_COLORS, FACES, PLACEHOLDER_COLOR } from './types'
 import { createSolvedCube } from './state'
 
 export type ValidationIssue = {
-  type: 'color-count' | 'duplicate-piece' | 'orientation' | 'parity'
+  type: 'color-count' | 'duplicate-piece' | 'orientation' | 'parity' | 'incomplete'
   message: string
   stickers?: StickerRef[]
 }
@@ -53,6 +53,18 @@ const findStickersByColor = (state: CubeState, color: string): StickerRef[] => {
   FACES.forEach((face) => {
     state[face].forEach((stickerColor, index) => {
       if (stickerColor === color) {
+        refs.push({ face, index })
+      }
+    })
+  })
+  return refs
+}
+
+const findPlaceholderStickers = (state: CubeState): StickerRef[] => {
+  const refs: StickerRef[] = []
+  FACES.forEach((face) => {
+    state[face].forEach((color, index) => {
+      if (color === PLACEHOLDER_COLOR) {
         refs.push({ face, index })
       }
     })
@@ -341,6 +353,16 @@ const checkPermutationParity = (state: CubeState, issues: ValidationIssue[]) => 
 
 export const validateCubeState = (state: CubeState): ValidationIssue[] => {
   const issues: ValidationIssue[] = []
+
+  const placeholders = findPlaceholderStickers(state)
+  if (placeholders.length > 0) {
+    issues.push({
+      type: 'incomplete',
+      message: 'Ci sono sticker non ancora assegnati. Completa il mapping prima di proseguire.',
+      stickers: placeholders,
+    })
+    return issues
+  }
 
   validateColorCounts(state, issues)
   collectCornerIssues(state, issues)
