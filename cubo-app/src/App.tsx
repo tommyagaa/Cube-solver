@@ -1,31 +1,98 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import CubeNet from './components/CubeNet'
 import MappingGuide from './components/MappingGuide'
 import ValidationPanel from './components/ValidationPanel'
 import StateTransferPanel from './components/StateTransferPanel'
+import HistoryPanel from './components/HistoryPanel'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
-import type { Color, Face } from './lib/cube/types'
+import type { Color, Face, CubeState } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
 
+type HistoryEntry = {
+  id: number
+  label: string
+  state: CubeState
+}
+
 function App() {
-  const [cube, setCube] = useState(() => createSolvedCube())
+  const [timeline, setTimeline] = useState(() => {
+    const initial = createSolvedCube()
+    return {
+      entries: [{ id: 0, label: 'Stato iniziale', state: initial }] as HistoryEntry[],
+      index: 0,
+    }
+  })
+  const historyIdRef = useRef(1)
+  const cube = timeline.entries[timeline.index]?.state ?? createSolvedCube()
   const [selectedColor, setSelectedColor] = useState<Color>('white')
   const validationIssues = validateCubeState(cube)
-  const highlighted = useMemo(() => {
-    const map: Partial<Record<Face, Set<number>>> = {}
+  const { highlighted, issueMessages } = useMemo(() => {
+    const highlightMap: Partial<Record<Face, Set<number>>> = {}
+    const messageMap: Partial<Record<Face, Record<number, string[]>>> = {}
+
     validationIssues.forEach((issue) => {
       issue.stickers?.forEach(({ face, index }) => {
-        if (!map[face]) {
-          map[face] = new Set<number>()
+        if (!highlightMap[face]) {
+          highlightMap[face] = new Set<number>()
         }
-        map[face]!.add(index)
+        highlightMap[face]!.add(index)
+
+        if (!messageMap[face]) {
+          messageMap[face] = {}
+        }
+        if (!messageMap[face]![index]) {
+          messageMap[face]![index] = []
+        }
+        messageMap[face]![index]?.push(issue.message)
       })
     })
-    return map
+
+    return { highlighted: highlightMap, issueMessages: messageMap }
   }, [validationIssues])
+
+  const commitState = (nextState: CubeState, label: string) => {
+    setTimeline((prev) => {
+      const base = prev.entries.slice(0, prev.index + 1)
+      const entry: HistoryEntry = { id: historyIdRef.current++, label, state: cloneCube(nextState) }
+      const entries = [...base, entry]
+      return { entries, index: entries.length - 1 }
+    })
+  }
+
+  const handleStickerClick = (face: Face, index: number) => {
+    const next = cloneCube(cube)
+    next[face][index] = selectedColor
+    commitState(next, `Set ${face}${index} -> ${selectedColor}`)
+  }
+
+  const handleReset = () => {
+    commitState(createSolvedCube(), 'Reset cubo')
+  }
+
+  const handleImport = (next: CubeState) => {
+    commitState(next, 'Import JSON')
+  }
+
+  const undo = () => {
+    setTimeline((prev) => {
+      if (prev.index === 0) {
+        return prev
+      }
+      return { ...prev, index: prev.index - 1 }
+    })
+  }
+
+  const redo = () => {
+    setTimeline((prev) => {
+      if (prev.index >= prev.entries.length - 1) {
+        return prev
+      }
+      return { ...prev, index: prev.index + 1 }
+    })
+  }
 
   return (
     <main className="app">
@@ -58,30 +125,30 @@ function App() {
         <button
           type="button"
           className="ghost"
-          onClick={() => setCube(createSolvedCube())}
+          onClick={handleReset}
         >
           Reset cubo
         </button>
       </div>
 
+      <HistoryPanel
+        entries={timeline.entries.map(({ id, label }) => ({ id, label }))}
+        currentIndex={timeline.index}
+        onUndo={undo}
+        onRedo={redo}
+      />
+
       <StateTransferPanel
         state={cube}
-        onImport={(next) => {
-          setCube(cloneCube(next))
-        }}
+        onImport={handleImport}
       />
 
       <section className="net-wrapper">
         <CubeNet
           state={cube}
           highlightedStickers={highlighted}
-          onStickerClick={(face, index) => {
-            setCube((prev) => {
-              const next = cloneCube(prev)
-              next[face][index] = selectedColor
-              return next
-            })
-          }}
+          issueMessages={issueMessages}
+          onStickerClick={handleStickerClick}
         />
       </section>
       <ValidationPanel issues={validationIssues} />

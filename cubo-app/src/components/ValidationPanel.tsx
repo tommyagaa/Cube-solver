@@ -44,7 +44,7 @@ const ValidationPanel = ({ issues }: ValidationPanelProps) => {
         <p className="ok">Stato valido ✅</p>
       ) : (
         <>
-          <p className="issue-hint">Gli sticker citati qui sotto sono gia evidenziati sulla net 2D.</p>
+          <p className="issue-hint">Gli sticker citati qui sotto sono gia evidenziati sulla net 2D e mostrano il motivo al passaggio del mouse.</p>
           <div className="issue-summary">
             {(Object.keys(counts) as IssueType[]).map((type) => (
               <span key={type} className="summary-pill">
