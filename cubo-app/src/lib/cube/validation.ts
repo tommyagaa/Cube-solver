@@ -36,6 +36,9 @@ const edgeDefinitions = [
   { id: 'DL', stickers: [['D', 3], ['L', 7]] },
 ] as const
 
+const CORNER_ID_ORDER = cornerDefinitions.map((def) => def.id)
+const EDGE_ID_ORDER = edgeDefinitions.map((def) => def.id)
+
 const sortedKey = (colors: string[]) => [...colors].sort().join('-')
 
 const solvedState = createSolvedCube()
@@ -219,6 +222,59 @@ const checkCornerOrientation = (state: CubeState, issues: ValidationIssue[]) => 
   }
 }
 
+const computeParity = (sequence: (string | null)[], indexMap: Map<string, number>) => {
+  if (sequence.some((id) => id == null)) {
+    return null
+  }
+
+  const perm = sequence.map((id) => indexMap.get(id!))
+  if (perm.some((idx) => idx == null)) {
+    return null
+  }
+
+  let inversions = 0
+  for (let i = 0; i < perm.length; i++) {
+    for (let j = i + 1; j < perm.length; j++) {
+      if ((perm[i] as number) > (perm[j] as number)) {
+        inversions++
+      }
+    }
+  }
+
+  return inversions % 2
+}
+
+const checkPermutationParity = (state: CubeState, issues: ValidationIssue[]) => {
+  const cornerIndexMap = new Map(CORNER_ID_ORDER.map((id, idx) => [id, idx]))
+  const edgeIndexMap = new Map(EDGE_ID_ORDER.map((id, idx) => [id, idx]))
+
+  const cornerSequence = cornerDefinitions.map((def) => {
+    const colors = def.stickers.map(([face, index]) => state[face][index])
+    const key = sortedKey(colors)
+    return canonicalCornerKeys.get(key) ?? null
+  })
+
+  const edgeSequence = edgeDefinitions.map((def) => {
+    const colors = def.stickers.map(([face, index]) => state[face][index])
+    const key = sortedKey(colors)
+    return canonicalEdgeKeys.get(key) ?? null
+  })
+
+  const cornerParity = computeParity(cornerSequence, cornerIndexMap)
+  const edgeParity = computeParity(edgeSequence, edgeIndexMap)
+
+  if (cornerParity == null || edgeParity == null) {
+    return
+  }
+
+  if (cornerParity !== edgeParity) {
+    issues.push({
+      type: 'parity',
+      message: 'Parità incongruente tra corner e edge (stato impossibile).',
+    })
+  }
+}
+
 export const validateCubeState = (state: CubeState): ValidationIssue[] => {
   const issues: ValidationIssue[] = []
 
@@ -227,6 +283,7 @@ export const validateCubeState = (state: CubeState): ValidationIssue[] => {
   collectEdgeIssues(state, issues)
   checkEdgeOrientation(state, issues)
   checkCornerOrientation(state, issues)
+  checkPermutationParity(state, issues)
 
   return issues
 }
