@@ -4,12 +4,14 @@ import MappingGuide from './components/MappingGuide'
 import ValidationPanel from './components/ValidationPanel'
 import StateTransferPanel from './components/StateTransferPanel'
 import HistoryPanel from './components/HistoryPanel'
+import FaceWizard from './components/FaceWizard'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
 import type { Color, Face, CubeState } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
+const faceOrder: Face[] = ['U', 'L', 'F', 'R', 'B', 'D']
 
 type HistoryEntry = {
   id: number
@@ -28,6 +30,8 @@ function App() {
   const historyIdRef = useRef(1)
   const cube = timeline.entries[timeline.index]?.state ?? createSolvedCube()
   const [selectedColor, setSelectedColor] = useState<Color>('white')
+  const [completedFaces, setCompletedFaces] = useState<Set<Face>>(new Set(['U']))
+  const [activeFace, setActiveFace] = useState<Face>('U')
   const validationIssues = validateCubeState(cube)
   const { highlighted, issueMessages } = useMemo(() => {
     const highlightMap: Partial<Record<Face, Set<number>>> = {}
@@ -63,6 +67,9 @@ function App() {
   }
 
   const handleStickerClick = (face: Face, index: number) => {
+    if (face !== activeFace) {
+      return
+    }
     const next = cloneCube(cube)
     next[face][index] = selectedColor
     commitState(next, `Set ${face}${index} -> ${selectedColor}`)
@@ -70,10 +77,14 @@ function App() {
 
   const handleReset = () => {
     commitState(createSolvedCube(), 'Reset cubo')
+    setCompletedFaces(new Set(['U']))
+    setActiveFace('U')
   }
 
   const handleImport = (next: CubeState) => {
     commitState(next, 'Import JSON')
+    setCompletedFaces(new Set(['U']))
+    setActiveFace('U')
   }
 
   const undo = () => {
@@ -105,6 +116,25 @@ function App() {
       </header>
 
       <MappingGuide />
+
+      <FaceWizard
+        cube={cube}
+        completedFaces={completedFaces}
+        activeFace={activeFace}
+        onFaceComplete={(face) => {
+          setCompletedFaces((prev) => new Set(prev).add(face))
+          const currentIndex = faceOrder.findIndex((f) => f === face)
+          const nextFace = faceOrder[Math.min(faceOrder.length - 1, currentIndex + 1)]
+          setActiveFace(nextFace)
+        }}
+        onSetActiveFace={(face) => {
+          const allowedIndex = completedFaces.size
+          const targetIndex = faceOrder.findIndex((f) => f === face)
+          if (targetIndex <= allowedIndex) {
+            setActiveFace(face)
+          }
+        }}
+      />
 
       <section className="palette">
         <p>Scegli il colore attivo</p>
@@ -149,6 +179,7 @@ function App() {
           highlightedStickers={highlighted}
           issueMessages={issueMessages}
           onStickerClick={handleStickerClick}
+          activeFace={activeFace}
         />
       </section>
       <ValidationPanel issues={validationIssues} />

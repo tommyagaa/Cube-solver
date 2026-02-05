@@ -9,11 +9,12 @@ type CubeNetProps = {
   onStickerClick?: (face: Face, index: number) => void
   highlightedStickers?: HighlightMap
   issueMessages?: IssueMessageMap
+  activeFace?: Face
 }
 
 const faceOrder: Face[] = ['U', 'L', 'F', 'R', 'B', 'D']
 
-const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages }: CubeNetProps) => {
+const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, activeFace }: CubeNetProps) => {
   return (
     <div className="cube-net">
       {faceOrder.map((face) => (
@@ -24,6 +25,7 @@ const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages }: 
               const isHighlighted = highlightedStickers?.[face]?.has(idx) ?? false
               const tooltip = issueMessages?.[face]?.[idx]
               const tooltipText = tooltip?.join(' • ')
+              const isLocked = Boolean(activeFace && face !== activeFace)
               return (
                 <button
                   key={idx}
@@ -34,6 +36,7 @@ const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages }: 
                   style={{ backgroundColor: color }}
                   type="button"
                   aria-label={`${face} sticker ${idx}`}
+                  disabled={isLocked}
                   onClick={() => onStickerClick?.(face, idx)}
                 />
               )
