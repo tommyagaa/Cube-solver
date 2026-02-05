@@ -1,13 +1,7 @@
 import type { ValidationIssue } from '../lib/cube/validation'
+import { ISSUE_LABELS } from '../lib/cube/issueLabels'
 
 type IssueType = ValidationIssue['type']
-
-const ISSUE_LABELS: Record<IssueType, string> = {
-  'color-count': 'Conteggio colori',
-  'duplicate-piece': 'Pezzo duplicato',
-  orientation: 'Orientamento',
-  parity: 'Parita',
-}
 
 const issueCountByType = (issues: ValidationIssue[]) => {
   return issues.reduce<Record<IssueType, number>>((acc, issue) => {

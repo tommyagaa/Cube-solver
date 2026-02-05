@@ -1,29 +1,27 @@
-import type { Face, CubeState } from '../lib/cube/types'
+import type { Face } from '../lib/cube/types'
 import { FACE_INPUT_ORDER } from '../lib/cube/faceOrder'
-const faceLabels: Record<Face, string> = {
-  U: 'Up · Bianco',
-  L: 'Left · Arancione',
-  F: 'Front · Verde',
-  R: 'Right · Rosso',
-  B: 'Back · Blu',
-  D: 'Down · Giallo',
-}
+import { FACE_LABELS } from '../lib/cube/faceLabels'
 
 type FaceWizardProps = {
-  cube: CubeState
   completedFaces: Set<Face>
   activeFace: Face
   onFaceComplete: (face: Face) => void
   onSetActiveFace: (face: Face) => void
   faceIssues?: Partial<Record<Face, string[]>>
+  faceProgress?: Record<Face, { filled: number; total: number }>
 }
 
-const FaceWizard = ({ cube, completedFaces, activeFace, onFaceComplete, onSetActiveFace, faceIssues }: FaceWizardProps) => {
+const DEFAULT_PROGRESS = { filled: 0, total: 9 }
+
+const FaceWizard = ({ completedFaces, activeFace, onFaceComplete, onSetActiveFace, faceIssues, faceProgress }: FaceWizardProps) => {
   const completedCount = completedFaces.size
   const progress = (completedCount / FACE_INPUT_ORDER.length) * 100
   const activeFaceDone = completedFaces.has(activeFace)
   const activeFaceHasIssues = Boolean(faceIssues?.[activeFace]?.length)
-  const faceIsFilled = (face: Face) => cube[face].every(Boolean)
+  const getFaceProgress = (face: Face) => faceProgress?.[face] ?? DEFAULT_PROGRESS
+  const activeProgress = getFaceProgress(activeFace)
+  const missingActive = Math.max(0, activeProgress.total - activeProgress.filled)
+  const canConfirm = missingActive === 0 && !activeFaceDone && !activeFaceHasIssues
 
   return (
     <section className="face-wizard">
@@ -43,6 +41,15 @@ const FaceWizard = ({ cube, completedFaces, activeFace, onFaceComplete, onSetAct
         {FACE_INPUT_ORDER.map((face) => {
           const done = completedFaces.has(face)
           const disabled = !done && face !== activeFace
+          const { filled, total } = getFaceProgress(face)
+          const missing = Math.max(0, total - filled)
+          const statusLabel = done
+            ? 'Confermato'
+            : face === activeFace
+              ? missing === 0
+                ? 'Pronta alla conferma'
+                : `${missing} da mappare`
+              : `${filled}/${total} completati`
           return (
             <button
               key={face}
@@ -53,8 +60,8 @@ const FaceWizard = ({ cube, completedFaces, activeFace, onFaceComplete, onSetAct
             >
               <span className="wizard-step-dot" />
               <div>
-                <p>{faceLabels[face]}</p>
-                <small>{done ? 'Confermato' : face === activeFace ? 'In corso' : 'Bloccato'}</small>
+                <p>{FACE_LABELS[face]}</p>
+                <small>{statusLabel}</small>
               </div>
             </button>
           )
@@ -65,7 +72,7 @@ const FaceWizard = ({ cube, completedFaces, activeFace, onFaceComplete, onSetAct
         <button
           type="button"
           className="ghost"
-          disabled={!faceIsFilled(activeFace) || activeFaceDone || activeFaceHasIssues}
+          disabled={!canConfirm}
           onClick={() => onFaceComplete(activeFace)}
         >
           Conferma faccia {activeFace}
@@ -79,6 +86,14 @@ const FaceWizard = ({ cube, completedFaces, activeFace, onFaceComplete, onSetAct
           Vai alla faccia finale
         </button>
       </div>
+
+      <p className="wizard-progress-hint">
+        {activeFaceDone
+          ? 'Hai già confermato questa faccia.'
+          : missingActive === 0
+            ? 'Tutti gli sticker sono stati compilati: puoi confermare.'
+            : `Mancano ${missingActive} sticker da colorare su questa faccia.`}
+      </p>
 
       {faceIssues?.[activeFace] && faceIssues[activeFace]!.length > 0 && (
         <ul className="wizard-issues">

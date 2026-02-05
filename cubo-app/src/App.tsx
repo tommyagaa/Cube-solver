@@ -5,29 +5,94 @@ import ValidationPanel from './components/ValidationPanel'
 import StateTransferPanel from './components/StateTransferPanel'
 import HistoryPanel from './components/HistoryPanel'
 import FaceWizard from './components/FaceWizard'
+import FaceDiagnostics from './components/FaceDiagnostics'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
 import type { Color, Face, CubeState } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
+import type { ValidationIssue } from './lib/cube/validation'
 import { FACE_INPUT_ORDER } from './lib/cube/faceOrder'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
 
+const STICKER_INDEXES = Array.from({ length: 9 }, (_, idx) => idx)
+const CENTER_INDEX = 4
+
+type TouchedMap = Record<Face, Set<number>>
+type SerializedTouchedMap = Record<Face, number[]>
+
 type HistoryEntry = {
   id: number
   label: string
   state: CubeState
+  touched: TouchedMap
 }
 
 const STORAGE_KEY = 'cubo-app/session-v1'
 
-type SessionPayload = {
+type PersistedSession = {
   cube: CubeState
   completedFaces: Face[]
   activeFace: Face
+  touched?: SerializedTouchedMap
 }
 
-const loadSession = (): SessionPayload | null => {
+type LoadedSession = {
+  cube: CubeState
+  completedFaces: Face[]
+  activeFace: Face
+  touched: TouchedMap
+}
+
+const createTouchedMap = (): TouchedMap => {
+  const map = {} as TouchedMap
+  FACE_INPUT_ORDER.forEach((face) => {
+    map[face] = new Set<number>([CENTER_INDEX])
+  })
+  return map
+}
+
+const createFullTouchedMap = (): TouchedMap => {
+  const map = {} as TouchedMap
+  FACE_INPUT_ORDER.forEach((face) => {
+    map[face] = new Set<number>(STICKER_INDEXES)
+  })
+  return map
+}
+
+const cloneTouchedMap = (source: TouchedMap): TouchedMap => {
+  const map = {} as TouchedMap
+  FACE_INPUT_ORDER.forEach((face) => {
+    map[face] = new Set(source[face] ?? [])
+  })
+  return map
+}
+
+const serializeTouchedMap = (map: TouchedMap): SerializedTouchedMap => {
+  const serialized = {} as SerializedTouchedMap
+  FACE_INPUT_ORDER.forEach((face) => {
+    serialized[face] = Array.from(map[face] ?? [])
+  })
+  return serialized
+}
+
+const deserializeTouchedMap = (serialized?: SerializedTouchedMap): TouchedMap => {
+  if (!serialized) {
+    return createTouchedMap()
+  }
+  const map = {} as TouchedMap
+  FACE_INPUT_ORDER.forEach((face) => {
+    const indexes = serialized[face]
+    if (Array.isArray(indexes) && indexes.length > 0) {
+      map[face] = new Set(indexes.filter((idx) => STICKER_INDEXES.includes(idx)))
+    } else {
+      map[face] = new Set<number>([CENTER_INDEX])
+    }
+  })
+  return map
+}
+
+const loadSession = (): LoadedSession | null => {
   if (typeof window === 'undefined') {
     return null
   }
@@ -38,7 +103,7 @@ const loadSession = (): SessionPayload | null => {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<SessionPayload>
+    const parsed = JSON.parse(raw) as Partial<PersistedSession>
     if (!parsed.cube) {
       return null
     }
@@ -48,56 +113,72 @@ const loadSession = (): SessionPayload | null => {
       : []
 
     const activeFace = FACE_INPUT_ORDER.includes(parsed.activeFace as Face) ? (parsed.activeFace as Face) : 'U'
+    const touched = deserializeTouchedMap(parsed.touched as SerializedTouchedMap | undefined)
 
     return {
       cube: parsed.cube as CubeState,
       completedFaces,
       activeFace,
+      touched,
     }
   } catch {
     return null
   }
 }
 
-const saveSession = (cube: CubeState, completedFaces: Set<Face>, activeFace: Face) => {
+const saveSession = (cube: CubeState, completedFaces: Set<Face>, activeFace: Face, touched: TouchedMap) => {
   if (typeof window === 'undefined') {
     return
   }
 
-  const payload: SessionPayload = {
+  const payload: PersistedSession = {
     cube: cloneCube(cube),
     completedFaces: Array.from(completedFaces),
     activeFace,
+    touched: serializeTouchedMap(touched),
   }
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
 }
 
 function App() {
-  const sessionRef = useRef<SessionPayload | null>(loadSession())
+  const sessionRef = useRef<LoadedSession | null>(loadSession())
   const session = sessionRef.current
   const initialCube = session?.cube ?? createSolvedCube()
   const initialCompleted = session?.completedFaces ?? []
   const initialActive = session?.activeFace ?? 'U'
+  const initialTouched = session?.touched ?? createTouchedMap()
   const initialLabel = session ? 'Sessione ripristinata' : 'Stato iniziale'
 
   const [timeline, setTimeline] = useState(() => {
     return {
-      entries: [{ id: 0, label: initialLabel, state: cloneCube(initialCube) }] as HistoryEntry[],
+      entries: [
+        {
+          id: 0,
+          label: initialLabel,
+          state: cloneCube(initialCube),
+          touched: cloneTouchedMap(initialTouched),
+        },
+      ] as HistoryEntry[],
       index: 0,
     }
   })
   const historyIdRef = useRef(1)
-  const cube = timeline.entries[timeline.index]?.state ?? createSolvedCube()
+  const currentEntry = timeline.entries[timeline.index]
+  const cube = currentEntry?.state ?? createSolvedCube()
+  const touched = currentEntry?.touched ?? createTouchedMap()
   const [selectedColor, setSelectedColor] = useState<Color>('white')
   const [completedFaces, setCompletedFaces] = useState<Set<Face>>(() => new Set(initialCompleted))
   const [activeFace, setActiveFace] = useState<Face>(initialActive)
   const validationIssues = validateCubeState(cube)
-  const { highlighted, issueMessages } = useMemo(() => {
+  const { highlighted, issueMessages, faceIssues, issuesByFace } = useMemo(() => {
     const highlightMap: Partial<Record<Face, Set<number>>> = {}
     const messageMap: Partial<Record<Face, Record<number, string[]>>> = {}
+    const perFaceIssues: Partial<Record<Face, ValidationIssue[]>> = {}
+    const perFaceMessages: Partial<Record<Face, string[]>> = {}
 
     validationIssues.forEach((issue) => {
+      const facesInIssue = new Set<Face>()
       issue.stickers?.forEach(({ face, index }) => {
         if (!highlightMap[face]) {
           highlightMap[face] = new Set<number>()
@@ -111,31 +192,53 @@ function App() {
           messageMap[face]![index] = []
         }
         messageMap[face]![index]?.push(issue.message)
+
+        facesInIssue.add(face)
+      })
+
+      facesInIssue.forEach((face) => {
+        if (!perFaceIssues[face]) {
+          perFaceIssues[face] = []
+        }
+        perFaceIssues[face]!.push(issue)
+
+        if (!perFaceMessages[face]) {
+          perFaceMessages[face] = []
+        }
+        if (!perFaceMessages[face]!.includes(issue.message)) {
+          perFaceMessages[face]!.push(issue.message)
+        }
       })
     })
 
-    return { highlighted: highlightMap, issueMessages: messageMap }
+    return {
+      highlighted: highlightMap,
+      issueMessages: messageMap,
+      faceIssues: perFaceMessages,
+      issuesByFace: perFaceIssues,
+    }
   }, [validationIssues])
 
-  const faceIssues = useMemo(() => {
-    const map: Partial<Record<Face, string[]>> = {}
-    validationIssues.forEach((issue) => {
-      issue.stickers?.forEach(({ face }) => {
-        if (!map[face]) {
-          map[face] = []
-        }
-        if (!map[face]!.includes(issue.message)) {
-          map[face]!.push(issue.message)
-        }
-      })
+  const faceProgress = useMemo(() => {
+    const map = {} as Record<Face, { filled: number; total: number }>
+    FACE_INPUT_ORDER.forEach((face) => {
+      map[face] = {
+        filled: touched[face]?.size ?? 0,
+        total: STICKER_INDEXES.length,
+      }
     })
     return map
-  }, [validationIssues])
+  }, [touched])
 
-  const commitState = (nextState: CubeState, label: string) => {
+  const commitState = (nextState: CubeState, nextTouched: TouchedMap, label: string) => {
     setTimeline((prev) => {
       const base = prev.entries.slice(0, prev.index + 1)
-      const entry: HistoryEntry = { id: historyIdRef.current++, label, state: cloneCube(nextState) }
+      const entry: HistoryEntry = {
+        id: historyIdRef.current++,
+        label,
+        state: cloneCube(nextState),
+        touched: cloneTouchedMap(nextTouched),
+      }
       const entries = [...base, entry]
       return { entries, index: entries.length - 1 }
     })
@@ -147,17 +250,22 @@ function App() {
     }
     const next = cloneCube(cube)
     next[face][index] = selectedColor
-    commitState(next, `Set ${face}${index} -> ${selectedColor}`)
+    const nextTouched = cloneTouchedMap(touched)
+    nextTouched[face]?.add(index)
+    commitState(next, nextTouched, `Set ${face}${index} -> ${selectedColor}`)
   }
 
   const handleReset = () => {
-    commitState(createSolvedCube(), 'Reset cubo')
+    const resetCube = createSolvedCube()
+    const resetTouched = createTouchedMap()
+    commitState(resetCube, resetTouched, 'Reset cubo')
     setCompletedFaces(new Set())
     setActiveFace('U')
   }
 
   const handleImport = (next: CubeState) => {
-    commitState(next, 'Import JSON')
+    const importTouched = createFullTouchedMap()
+    commitState(next, importTouched, 'Import JSON')
     setCompletedFaces(new Set())
     setActiveFace('U')
   }
@@ -181,8 +289,8 @@ function App() {
   }
 
   useEffect(() => {
-    saveSession(cube, completedFaces, activeFace)
-  }, [cube, completedFaces, activeFace])
+    saveSession(cube, completedFaces, activeFace, touched)
+  }, [cube, completedFaces, activeFace, touched])
 
   useEffect(() => {
     setCompletedFaces((prev) => {
@@ -212,10 +320,10 @@ function App() {
       <MappingGuide />
 
       <FaceWizard
-        cube={cube}
         completedFaces={completedFaces}
         activeFace={activeFace}
         faceIssues={faceIssues}
+        faceProgress={faceProgress}
         onFaceComplete={(face) => {
           setCompletedFaces((prev) => {
             const next = new Set(prev)
@@ -233,6 +341,11 @@ function App() {
             setActiveFace(face)
           }
         }}
+      />
+
+      <FaceDiagnostics
+        activeFace={activeFace}
+        issues={issuesByFace[activeFace] ?? []}
       />
 
       <section className="palette">
