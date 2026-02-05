@@ -1,5 +1,5 @@
-import type { CubeState,Face,FaceStickers } from './types'
-import { DEFAULT_FACE_COLORS,FACES } from './types'
+import type { CubeState, FaceStickers } from './types'
+import { DEFAULT_FACE_COLORS, FACES } from './types'
 
 //funzione di utilità: restituisce un array di 9 sticker tutti dello stesso colore
 const fillFace=(color: FaceStickers[number]): FaceStickers=> Array(9).fill(color) as FaceStickers

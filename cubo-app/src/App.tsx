@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import CubeNet from './components/CubeNet'
+import MappingGuide from './components/MappingGuide'
+import ValidationPanel from './components/ValidationPanel'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
 import type { Color } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
@@ -19,9 +21,11 @@ function App() {
         <p className="eyebrow">Fase 1 · Input stato</p>
         <h1>Designer del Cubo</h1>
         <p className="subtitle">
-          Visualizza le sei facce e assegna i colori reali del tuo cubo. Gli input sono ancora in sola lettura.
+          Visualizza le sei facce, segui la guida di mappatura e clicca sugli sticker per riportare lo stato reale del tuo cubo.
         </p>
       </header>
+
+      <MappingGuide />
 
       <section className="palette">
         <p>Scegli il colore attivo</p>
@@ -38,7 +42,7 @@ function App() {
           ))}
         </div>
       </section>
-          <div className="actions">
+      <div className="actions">
         <button
           type="button"
           className="ghost"
@@ -73,18 +77,7 @@ function App() {
           }}
         />
       </section>
-      <section className="diagnostics">
-  <h2>Diagnostica</h2>
-  {isValid ? (
-    <p className="ok">Stato valido ✅</p>
-  ) : (
-    <ol className="issues">
-      {validationIssues.map((issue, idx) => (
-        <li key={`${issue.type}-${idx}`}>{issue.message}</li>
-      ))}
-    </ol>
-  )}
-</section>
+      <ValidationPanel issues={validationIssues} />
     </main>
   )
 }

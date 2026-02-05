@@ -61,6 +61,101 @@ h1 {
   color: #9ca3af;
 }
 
+.eyebrow.small {
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  color: #38bdf8;
+}
+
+.mapping-guide {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 20px;
+  padding: 1.75rem;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mapping-guide header {
+  margin: 0;
+}
+
+.mapping-subtitle {
+  margin: 0.4rem 0 0;
+  color: #94a3b8;
+}
+
+.guide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.guide-step {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.guide-step p {
+  margin: 0;
+  color: #e5e7eb;
+}
+
+.step-index {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #030712;
+  flex-shrink: 0;
+}
+
+.face-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.face-chip {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
+}
+
+.chip-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.45);
+}
+
+.chip-face {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.chip-hint {
+  margin: 0.25rem 0 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
 .palette {
   background: rgba(15, 23, 42, 0.55);
   border-radius: 16px;
@@ -226,17 +321,105 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
   margin-top: 1rem;
 }
+.diagnostics-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .diagnostics h2 {
-  margin: 0 0 0.75rem;
+  margin: 0;
   font-size: 1.1rem;
 }
+
+.diagnostics-subtitle {
+  margin: 0.35rem 0 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.status-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.status-bad {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
 .diagnostics .ok {
   color: #10b981;
   font-weight: 600;
 }
+.issue-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.summary-pill {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+  color: #e5e7eb;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.15);
+}
+
 .diagnostics .issues {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: #e5e7eb;
+}
+
+.issue-item {
+  background: rgba(2, 6, 23, 0.45);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.55);
+}
+
+.issue-item p {
   margin: 0;
-  padding-left: 1.25rem;
+  color: #f8fafc;
+}
+
+.issue-tag {
+  display: inline-flex;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.issue-tag.issue-color-count {
+  color: #fbbf24;
+}
+
+.issue-tag.issue-duplicate-piece {
   color: #f97316;
-  line-height: 1.4;
+}
+
+.issue-tag.issue-orientation {
+  color: #60a5fa;
+}
+
+.issue-tag.issue-parity {
+  color: #f472b6;
 }
