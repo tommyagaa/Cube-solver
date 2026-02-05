@@ -2,6 +2,7 @@ import { useState } from 'react'
 import CubeNet from './components/CubeNet'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
 import type { Color } from './lib/cube/types'
+import { validateCubeState } from './lib/cube/validation'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
@@ -9,6 +10,8 @@ const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
 function App() {
   const [cube, setCube] = useState(() => createSolvedCube())
   const [selectedColor, setSelectedColor] = useState<Color>('white')
+  const validationIssues = validateCubeState(cube)
+  const isValid = validationIssues.length === 0
 
   return (
     <main className="app">
@@ -46,6 +49,7 @@ function App() {
         <button
           type="button"
           className="primary"
+          disabled={!isValid}
           onClick={() => {
             const payload = JSON.stringify(cube, null, 2)
             console.log(payload)
@@ -69,6 +73,18 @@ function App() {
           }}
         />
       </section>
+      <section className="diagnostics">
+  <h2>Diagnostica</h2>
+  {isValid ? (
+    <p className="ok">Stato valido ✅</p>
+  ) : (
+    <ol className="issues">
+      {validationIssues.map((issue, idx) => (
+        <li key={`${issue.type}-${idx}`}>{issue.message}</li>
+      ))}
+    </ol>
+  )}
+</section>
     </main>
   )
 }
