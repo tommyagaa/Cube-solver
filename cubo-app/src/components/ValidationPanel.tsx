@@ -20,6 +20,8 @@ type ValidationPanelProps = {
   issues: ValidationIssue[]
 }
 
+const formatStickerRef = (face: string, index: number) => `${face}${index}`
+
 const ValidationPanel = ({ issues }: ValidationPanelProps) => {
   const isValid = issues.length === 0
   const counts = issueCountByType(issues)
@@ -42,6 +44,7 @@ const ValidationPanel = ({ issues }: ValidationPanelProps) => {
         <p className="ok">Stato valido ✅</p>
       ) : (
         <>
+          <p className="issue-hint">Gli sticker citati qui sotto sono gia evidenziati sulla net 2D.</p>
           <div className="issue-summary">
             {(Object.keys(counts) as IssueType[]).map((type) => (
               <span key={type} className="summary-pill">
@@ -54,6 +57,11 @@ const ValidationPanel = ({ issues }: ValidationPanelProps) => {
               <li key={`${issue.type}-${idx}`} className="issue-item">
                 <span className={`issue-tag issue-${issue.type}`}>{ISSUE_LABELS[issue.type]}</span>
                 <p>{issue.message}</p>
+                {issue.stickers && issue.stickers.length > 0 && (
+                  <p className="issue-stickers">
+                    Sticker coinvolti: {issue.stickers.map(({ face, index }) => formatStickerRef(face, index)).join(', ')}
+                  </p>
+                )}
               </li>
             ))}
           </ol>

@@ -1,10 +1,16 @@
 import type { CubeState, Face, Color } from './types'
-import { DEFAULT_FACE_COLORS } from './types'
+import { DEFAULT_FACE_COLORS, FACES } from './types'
 import { createSolvedCube } from './state'
 
 export type ValidationIssue = {
   type: 'color-count' | 'duplicate-piece' | 'orientation' | 'parity'
   message: string
+  stickers?: StickerRef[]
+}
+
+export type StickerRef = {
+  face: Face
+  index: number
 }
 
 const cornerDefinitions = [
@@ -38,6 +44,21 @@ const edgeDefinitions = [
 
 const CORNER_ID_ORDER = cornerDefinitions.map((def) => def.id)
 const EDGE_ID_ORDER = edgeDefinitions.map((def) => def.id)
+
+const toStickerRefs = (stickers: ReadonlyArray<readonly [Face, number]>): StickerRef[] =>
+  stickers.map(([face, index]) => ({ face, index }))
+
+const findStickersByColor = (state: CubeState, color: string): StickerRef[] => {
+  const refs: StickerRef[] = []
+  FACES.forEach((face) => {
+    state[face].forEach((stickerColor, index) => {
+      if (stickerColor === color) {
+        refs.push({ face, index })
+      }
+    })
+  })
+  return refs
+}
 
 const sortedKey = (colors: string[]) => [...colors].sort().join('-')
 
@@ -76,88 +97,104 @@ const validateColorCounts = (state: CubeState, issues: ValidationIssue[]) => {
   expectedColors.forEach((color) => {
     const current = counts[color] ?? 0
     if (current !== 9) {
+      const stickers = findStickersByColor(state, color)
       issues.push({
         type: 'color-count',
         message: `Il colore "${color}" appare ${current} volte (atteso 9).`,
+        stickers,
       })
     }
   })
 
   Object.keys(counts).forEach((color) => {
     if (!expectedColors.has(color as Color)) {
+      const stickers = findStickersByColor(state, color)
       issues.push({
         type: 'color-count',
         message: `Colore sconosciuto rilevato: "${color}".`,
+        stickers,
       })
     }
   })
 }
 
 const collectCornerIssues = (state: CubeState, issues: ValidationIssue[]) => {
-  const counts = new Map<string, number>()
+  const occurrences = new Map<string, StickerRef[][]>()
 
   cornerDefinitions.forEach((def) => {
     const colors = def.stickers.map(([face, index]) => state[face][index])
     const key = sortedKey(colors)
     const canonicalId = canonicalCornerKeys.get(key)
+    const refs = toStickerRefs(def.stickers)
 
     if (!canonicalId) {
       issues.push({
         type: 'duplicate-piece',
         message: `Corner definito da ${def.id} contiene combinazione colori non valida (${colors.join(', ')}).`,
+        stickers: refs,
       })
       return
     }
 
-    counts.set(canonicalId, (counts.get(canonicalId) ?? 0) + 1)
+    const list = occurrences.get(canonicalId) ?? []
+    list.push(refs)
+    occurrences.set(canonicalId, list)
   })
 
   cornerDefinitions.forEach((def) => {
-    const seen = counts.get(def.id) ?? 0
-    if (seen === 0) {
+    const seen = occurrences.get(def.id) ?? []
+    if (seen.length === 0) {
       issues.push({
         type: 'duplicate-piece',
         message: `Corner ${def.id} mancante nello stato inserito.`,
+        stickers: toStickerRefs(def.stickers),
       })
-    } else if (seen > 1) {
+    } else if (seen.length > 1) {
       issues.push({
         type: 'duplicate-piece',
-        message: `Corner ${def.id} appare ${seen} volte.`,
+        message: `Corner ${def.id} appare ${seen.length} volte.`,
+        stickers: seen.flat(),
       })
     }
   })
 }
 
 const collectEdgeIssues = (state: CubeState, issues: ValidationIssue[]) => {
-  const counts = new Map<string, number>()
+  const occurrences = new Map<string, StickerRef[][]>()
 
   edgeDefinitions.forEach((def) => {
     const colors = def.stickers.map(([face, index]) => state[face][index]) as [Color, Color]
     const key = sortedKey(colors)
     const canonicalId = canonicalEdgeKeys.get(key)
+    const refs = toStickerRefs(def.stickers)
 
     if (!canonicalId) {
       issues.push({
         type: 'duplicate-piece',
         message: `Spigolo definito da ${def.id} contiene combinazione non valida (${colors.join(', ')}).`,
+        stickers: refs,
       })
       return
     }
 
-    counts.set(canonicalId, (counts.get(canonicalId) ?? 0) + 1)
+    const list = occurrences.get(canonicalId) ?? []
+    list.push(refs)
+    occurrences.set(canonicalId, list)
   })
 
   edgeDefinitions.forEach((def) => {
-    const seen = counts.get(def.id) ?? 0
-    if (seen === 0) {
+    const seen = occurrences.get(def.id) ?? []
+    if (seen.length === 0) {
       issues.push({
         type: 'duplicate-piece',
         message: `Spigolo ${def.id} mancante nello stato inserito.`,
+        stickers: toStickerRefs(def.stickers),
       })
-    } else if (seen > 1) {
+    } else if (seen.length > 1) {
       issues.push({
         type: 'duplicate-piece',
-        message: `Spigolo ${def.id} appare ${seen} volte.`,
+        message: `Spigolo ${def.id} appare ${seen.length} volte.`,
+        stickers: seen.flat(),
       })
     }
   })
@@ -165,6 +202,7 @@ const collectEdgeIssues = (state: CubeState, issues: ValidationIssue[]) => {
 
 const checkEdgeOrientation = (state: CubeState, issues: ValidationIssue[]) => {
   let flipSum = 0
+  const flippedEdges: StickerRef[] = []
 
   edgeDefinitions.forEach((def) => {
     const colors = def.stickers.map(([face, index]) => state[face][index]) as [Color, Color]
@@ -179,18 +217,23 @@ const checkEdgeOrientation = (state: CubeState, issues: ValidationIssue[]) => {
     }
     const orientation = colors[0] === canonicalColors[0] ? 0 : 1
     flipSum = (flipSum + orientation) % 2
+    if (orientation === 1) {
+      flippedEdges.push(...toStickerRefs(def.stickers))
+    }
   })
 
   if (flipSum % 2 !== 0) {
     issues.push({
       type: 'orientation',
       message: 'Orientamento spigoli impossibile (somma dei flip dispari).',
+      stickers: flippedEdges,
     })
   }
 }
 
 const checkCornerOrientation = (state: CubeState, issues: ValidationIssue[]) => {
   let twistSum = 0
+  const twistedCorners: StickerRef[] = []
 
   cornerDefinitions.forEach((def) => {
     const colors = def.stickers.map(([face, index]) => state[face][index]) as [Color, Color, Color]
@@ -212,12 +255,16 @@ const checkCornerOrientation = (state: CubeState, issues: ValidationIssue[]) => 
     }
 
     twistSum = (twistSum + twist) % 3
+    if (twist !== 0) {
+      twistedCorners.push(...toStickerRefs(def.stickers))
+    }
   })
 
   if (twistSum % 3 !== 0) {
     issues.push({
       type: 'orientation',
       message: 'Orientamento angoli impossibile (somma dei twist non multiplo di 3).',
+      stickers: twistedCorners,
     })
   }
 }
@@ -260,6 +307,22 @@ const checkPermutationParity = (state: CubeState, issues: ValidationIssue[]) => 
     return canonicalEdgeKeys.get(key) ?? null
   })
 
+  const misplacedCorners: StickerRef[] = []
+  cornerDefinitions.forEach((def, idx) => {
+    const sequenceId = cornerSequence[idx]
+    if (sequenceId && sequenceId !== def.id) {
+      misplacedCorners.push(...toStickerRefs(def.stickers))
+    }
+  })
+
+  const misplacedEdges: StickerRef[] = []
+  edgeDefinitions.forEach((def, idx) => {
+    const sequenceId = edgeSequence[idx]
+    if (sequenceId && sequenceId !== def.id) {
+      misplacedEdges.push(...toStickerRefs(def.stickers))
+    }
+  })
+
   const cornerParity = computeParity(cornerSequence, cornerIndexMap)
   const edgeParity = computeParity(edgeSequence, edgeIndexMap)
 
@@ -271,6 +334,7 @@ const checkPermutationParity = (state: CubeState, issues: ValidationIssue[]) => 
     issues.push({
       type: 'parity',
       message: 'Parità incongruente tra corner e edge (stato impossibile).',
+      stickers: [...misplacedCorners, ...misplacedEdges],
     })
   }
 }

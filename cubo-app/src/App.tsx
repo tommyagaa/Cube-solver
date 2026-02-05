@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import CubeNet from './components/CubeNet'
 import MappingGuide from './components/MappingGuide'
 import ValidationPanel from './components/ValidationPanel'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
-import type { Color } from './lib/cube/types'
+import type { Color, Face } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
 import './App.css'
 
@@ -14,6 +14,18 @@ function App() {
   const [selectedColor, setSelectedColor] = useState<Color>('white')
   const validationIssues = validateCubeState(cube)
   const isValid = validationIssues.length === 0
+  const highlighted = useMemo(() => {
+    const map: Partial<Record<Face, Set<number>>> = {}
+    validationIssues.forEach((issue) => {
+      issue.stickers?.forEach(({ face, index }) => {
+        if (!map[face]) {
+          map[face] = new Set<number>()
+        }
+        map[face]!.add(index)
+      })
+    })
+    return map
+  }, [validationIssues])
 
   return (
     <main className="app">
@@ -68,6 +80,7 @@ function App() {
       <section className="net-wrapper">
         <CubeNet
           state={cube}
+          highlightedStickers={highlighted}
           onStickerClick={(face, index) => {
             setCube((prev) => {
               const next = cloneCube(prev)
