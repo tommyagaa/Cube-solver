@@ -1,4 +1,5 @@
 import type { CubeState, Face } from '../lib/cube/types'
+import { FACE_INPUT_ORDER } from '../lib/cube/faceOrder'
 import '../App.css'
 
 type HighlightMap = Partial<Record<Face, Set<number>>>
@@ -12,12 +13,10 @@ type CubeNetProps = {
   activeFace?: Face
 }
 
-const faceOrder: Face[] = ['U', 'L', 'F', 'R', 'B', 'D']
-
 const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, activeFace }: CubeNetProps) => {
   return (
     <div className="cube-net">
-      {faceOrder.map((face) => (
+      {FACE_INPUT_ORDER.map((face) => (
         <div key={face} className={`face face-${face}`}>
           <p className="face-label">{face}</p>
           <div className="grid">

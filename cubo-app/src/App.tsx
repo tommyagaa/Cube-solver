@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import CubeNet from './components/CubeNet'
 import MappingGuide from './components/MappingGuide'
 import ValidationPanel from './components/ValidationPanel'
@@ -8,10 +8,10 @@ import FaceWizard from './components/FaceWizard'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
 import type { Color, Face, CubeState } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
+import { FACE_INPUT_ORDER } from './lib/cube/faceOrder'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
-const faceOrder: Face[] = ['U', 'L', 'F', 'R', 'B', 'D']
 
 type HistoryEntry = {
   id: number
@@ -19,19 +19,79 @@ type HistoryEntry = {
   state: CubeState
 }
 
-function App() {
-  const [timeline, setTimeline] = useState(() => {
-    const initial = createSolvedCube()
+const STORAGE_KEY = 'cubo-app/session-v1'
+
+type SessionPayload = {
+  cube: CubeState
+  completedFaces: Face[]
+  activeFace: Face
+}
+
+const loadSession = (): SessionPayload | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY)
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<SessionPayload>
+    if (!parsed.cube) {
+      return null
+    }
+
+    const completedFaces = Array.isArray(parsed.completedFaces)
+      ? parsed.completedFaces.filter((face): face is Face => FACE_INPUT_ORDER.includes(face as Face))
+      : []
+
+    const activeFace = FACE_INPUT_ORDER.includes(parsed.activeFace as Face) ? (parsed.activeFace as Face) : 'U'
+
     return {
-      entries: [{ id: 0, label: 'Stato iniziale', state: initial }] as HistoryEntry[],
+      cube: parsed.cube as CubeState,
+      completedFaces,
+      activeFace,
+    }
+  } catch {
+    return null
+  }
+}
+
+const saveSession = (cube: CubeState, completedFaces: Set<Face>, activeFace: Face) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const payload: SessionPayload = {
+    cube: cloneCube(cube),
+    completedFaces: Array.from(completedFaces),
+    activeFace,
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+}
+
+function App() {
+  const sessionRef = useRef<SessionPayload | null>(loadSession())
+  const session = sessionRef.current
+  const initialCube = session?.cube ?? createSolvedCube()
+  const initialCompleted = session?.completedFaces ?? []
+  const initialActive = session?.activeFace ?? 'U'
+  const initialLabel = session ? 'Sessione ripristinata' : 'Stato iniziale'
+
+  const [timeline, setTimeline] = useState(() => {
+    return {
+      entries: [{ id: 0, label: initialLabel, state: cloneCube(initialCube) }] as HistoryEntry[],
       index: 0,
     }
   })
   const historyIdRef = useRef(1)
   const cube = timeline.entries[timeline.index]?.state ?? createSolvedCube()
   const [selectedColor, setSelectedColor] = useState<Color>('white')
-  const [completedFaces, setCompletedFaces] = useState<Set<Face>>(new Set(['U']))
-  const [activeFace, setActiveFace] = useState<Face>('U')
+  const [completedFaces, setCompletedFaces] = useState<Set<Face>>(() => new Set(initialCompleted))
+  const [activeFace, setActiveFace] = useState<Face>(initialActive)
   const validationIssues = validateCubeState(cube)
   const { highlighted, issueMessages } = useMemo(() => {
     const highlightMap: Partial<Record<Face, Set<number>>> = {}
@@ -57,6 +117,21 @@ function App() {
     return { highlighted: highlightMap, issueMessages: messageMap }
   }, [validationIssues])
 
+  const faceIssues = useMemo(() => {
+    const map: Partial<Record<Face, string[]>> = {}
+    validationIssues.forEach((issue) => {
+      issue.stickers?.forEach(({ face }) => {
+        if (!map[face]) {
+          map[face] = []
+        }
+        if (!map[face]!.includes(issue.message)) {
+          map[face]!.push(issue.message)
+        }
+      })
+    })
+    return map
+  }, [validationIssues])
+
   const commitState = (nextState: CubeState, label: string) => {
     setTimeline((prev) => {
       const base = prev.entries.slice(0, prev.index + 1)
@@ -77,13 +152,13 @@ function App() {
 
   const handleReset = () => {
     commitState(createSolvedCube(), 'Reset cubo')
-    setCompletedFaces(new Set(['U']))
+    setCompletedFaces(new Set())
     setActiveFace('U')
   }
 
   const handleImport = (next: CubeState) => {
     commitState(next, 'Import JSON')
-    setCompletedFaces(new Set(['U']))
+    setCompletedFaces(new Set())
     setActiveFace('U')
   }
 
@@ -105,6 +180,25 @@ function App() {
     })
   }
 
+  useEffect(() => {
+    saveSession(cube, completedFaces, activeFace)
+  }, [cube, completedFaces, activeFace])
+
+  useEffect(() => {
+    setCompletedFaces((prev) => {
+      let changed = false
+      const next = new Set(prev)
+      prev.forEach((face) => {
+        if (faceIssues[face]?.length) {
+          if (next.delete(face)) {
+            changed = true
+          }
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [faceIssues])
+
   return (
     <main className="app">
       <header className="app-header">
@@ -121,15 +215,20 @@ function App() {
         cube={cube}
         completedFaces={completedFaces}
         activeFace={activeFace}
+        faceIssues={faceIssues}
         onFaceComplete={(face) => {
-          setCompletedFaces((prev) => new Set(prev).add(face))
-          const currentIndex = faceOrder.findIndex((f) => f === face)
-          const nextFace = faceOrder[Math.min(faceOrder.length - 1, currentIndex + 1)]
+          setCompletedFaces((prev) => {
+            const next = new Set(prev)
+            next.add(face)
+            return next
+          })
+          const currentIndex = FACE_INPUT_ORDER.findIndex((f) => f === face)
+          const nextFace = FACE_INPUT_ORDER[Math.min(FACE_INPUT_ORDER.length - 1, currentIndex + 1)]
           setActiveFace(nextFace)
         }}
         onSetActiveFace={(face) => {
           const allowedIndex = completedFaces.size
-          const targetIndex = faceOrder.findIndex((f) => f === face)
+          const targetIndex = FACE_INPUT_ORDER.findIndex((f) => f === face)
           if (targetIndex <= allowedIndex) {
             setActiveFace(face)
           }
