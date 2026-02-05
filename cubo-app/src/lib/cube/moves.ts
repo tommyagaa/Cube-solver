@@ -1,7 +1,5 @@
-import type { CubeState, Face, FaceStickers, Move, MoveBase, MoveModifier} from './types'
-
-import { cloneCube, createSolvedCube } from './state'
-import { FACES } from './types'
+import type { CubeState, Face, FaceStickers, Move, MoveBase, MoveModifier } from './types'
+import { cloneCube } from './state'
 
 // Ruota una faccia di 90° *clockwiseQuarterTurns* volte (clockwise = 1)
 const rotateFace = (

@@ -1,34 +1,75 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import CubeNet from './components/CubeNet'
+import { createSolvedCube, cloneCube } from './lib/cube/state'
+import type { Color } from './lib/cube/types'
 import './App.css'
 
+const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [cube, setCube] = useState(() => createSolvedCube())
+  const [selectedColor, setSelectedColor] = useState<Color>('white')
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
+    <main className="app">
+      <header className="app-header">
+        <p className="eyebrow">Fase 1 · Input stato</p>
+        <h1>Designer del Cubo</h1>
+        <p className="subtitle">
+          Visualizza le sei facce e assegna i colori reali del tuo cubo. Gli input sono ancora in sola lettura.
         </p>
+      </header>
+
+      <section className="palette">
+        <p>Scegli il colore attivo</p>
+        <div className="swatches">
+          {palette.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className={`swatch ${selectedColor === color ? 'swatch-active' : ''}`}
+              style={{ backgroundColor: color }}
+              aria-label={`Seleziona ${color}`}
+              onClick={() => setSelectedColor(color)}
+            />
+          ))}
+        </div>
+      </section>
+          <div className="actions">
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => setCube(createSolvedCube())}
+        >
+          Reset cubo
+        </button>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => {
+            const payload = JSON.stringify(cube, null, 2)
+            console.log(payload)
+            alert('Stato esportato in console (JSON).')
+          }}
+        >
+          Esporta JSON
+        </button>
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+
+
+      <section className="net-wrapper">
+        <CubeNet
+          state={cube}
+          onStickerClick={(face, index) => {
+            setCube((prev) => {
+              const next = cloneCube(prev)
+              next[face][index] = selectedColor
+              return next
+            })
+          }}
+        />
+      </section>
+    </main>
   )
 }
 

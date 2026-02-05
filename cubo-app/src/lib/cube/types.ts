@@ -1,5 +1,5 @@
 export type Face = 'U' | 'D' | 'F'| 'B' |'L' |'R'
-export const Faces: readonly Face[] =['U', 'D', 'F', 'B', 'L', 'R']
+export const FACES: readonly Face[] =['U', 'D', 'F', 'B', 'L', 'R']
 export type Color = 'white'| 'yellow' | 'green' |'blue' | 'orange' | 'red'
 
 export type FaceStickers = [
