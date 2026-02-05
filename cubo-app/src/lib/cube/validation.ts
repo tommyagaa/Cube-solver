@@ -41,15 +41,19 @@ const sortedKey = (colors: string[]) => [...colors].sort().join('-')
 const solvedState = createSolvedCube()
 
 const canonicalCornerKeys = new Map<string, string>()
+const canonicalCornerColorOrder = new Map<string, [Color, Color, Color]>()
 cornerDefinitions.forEach((def) => {
-  const colors = def.stickers.map(([face]) => solvedState[face][4])
+  const colors = def.stickers.map(([face]) => solvedState[face][4]) as [Color, Color, Color]
   canonicalCornerKeys.set(sortedKey(colors), def.id)
+  canonicalCornerColorOrder.set(def.id, colors)
 })
 
 const canonicalEdgeKeys = new Map<string, string>()
+const canonicalEdgeColorOrder = new Map<string, [Color, Color]>()
 edgeDefinitions.forEach((def) => {
-  const colors = def.stickers.map(([face]) => solvedState[face][4])
+  const colors = def.stickers.map(([face]) => solvedState[face][4]) as [Color, Color]
   canonicalEdgeKeys.set(sortedKey(colors), def.id)
+  canonicalEdgeColorOrder.set(def.id, colors)
 })
 
 export const collectColorCounts = (state: CubeState) => {
@@ -125,7 +129,7 @@ const collectEdgeIssues = (state: CubeState, issues: ValidationIssue[]) => {
   const counts = new Map<string, number>()
 
   edgeDefinitions.forEach((def) => {
-    const colors = def.stickers.map(([face, index]) => state[face][index])
+    const colors = def.stickers.map(([face, index]) => state[face][index]) as [Color, Color]
     const key = sortedKey(colors)
     const canonicalId = canonicalEdgeKeys.get(key)
 
@@ -156,12 +160,73 @@ const collectEdgeIssues = (state: CubeState, issues: ValidationIssue[]) => {
   })
 }
 
+const checkEdgeOrientation = (state: CubeState, issues: ValidationIssue[]) => {
+  let flipSum = 0
+
+  edgeDefinitions.forEach((def) => {
+    const colors = def.stickers.map(([face, index]) => state[face][index]) as [Color, Color]
+    const key = sortedKey(colors)
+    const canonicalId = canonicalEdgeKeys.get(key)
+    if (!canonicalId) {
+      return
+    }
+    const canonicalColors = canonicalEdgeColorOrder.get(canonicalId)
+    if (!canonicalColors) {
+      return
+    }
+    const orientation = colors[0] === canonicalColors[0] ? 0 : 1
+    flipSum = (flipSum + orientation) % 2
+  })
+
+  if (flipSum % 2 !== 0) {
+    issues.push({
+      type: 'orientation',
+      message: 'Orientamento spigoli impossibile (somma dei flip dispari).',
+    })
+  }
+}
+
+const checkCornerOrientation = (state: CubeState, issues: ValidationIssue[]) => {
+  let twistSum = 0
+
+  cornerDefinitions.forEach((def) => {
+    const colors = def.stickers.map(([face, index]) => state[face][index]) as [Color, Color, Color]
+    const key = sortedKey(colors)
+    const canonicalId = canonicalCornerKeys.get(key)
+    if (!canonicalId) {
+      return
+    }
+    const canonicalColors = canonicalCornerColorOrder.get(canonicalId)
+    if (!canonicalColors) {
+      return
+    }
+
+    const topColors: Color[] = [DEFAULT_FACE_COLORS.U, DEFAULT_FACE_COLORS.D]
+    const twist = colors.findIndex((color) => topColors.includes(color))
+
+    if (twist === -1) {
+      return
+    }
+
+    twistSum = (twistSum + twist) % 3
+  })
+
+  if (twistSum % 3 !== 0) {
+    issues.push({
+      type: 'orientation',
+      message: 'Orientamento angoli impossibile (somma dei twist non multiplo di 3).',
+    })
+  }
+}
+
 export const validateCubeState = (state: CubeState): ValidationIssue[] => {
   const issues: ValidationIssue[] = []
 
   validateColorCounts(state, issues)
   collectCornerIssues(state, issues)
   collectEdgeIssues(state, issues)
+  checkEdgeOrientation(state, issues)
+  checkCornerOrientation(state, issues)
 
   return issues
 }
