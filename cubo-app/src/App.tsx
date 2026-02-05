@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import CubeNet from './components/CubeNet'
 import MappingGuide from './components/MappingGuide'
 import ValidationPanel from './components/ValidationPanel'
+import StateTransferPanel from './components/StateTransferPanel'
 import { createSolvedCube, cloneCube } from './lib/cube/state'
 import type { Color, Face } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
@@ -13,7 +14,6 @@ function App() {
   const [cube, setCube] = useState(() => createSolvedCube())
   const [selectedColor, setSelectedColor] = useState<Color>('white')
   const validationIssues = validateCubeState(cube)
-  const isValid = validationIssues.length === 0
   const highlighted = useMemo(() => {
     const map: Partial<Record<Face, Set<number>>> = {}
     validationIssues.forEach((issue) => {
@@ -62,20 +62,14 @@ function App() {
         >
           Reset cubo
         </button>
-        <button
-          type="button"
-          className="primary"
-          disabled={!isValid}
-          onClick={() => {
-            const payload = JSON.stringify(cube, null, 2)
-            console.log(payload)
-            alert('Stato esportato in console (JSON).')
-          }}
-        >
-          Esporta JSON
-        </button>
       </div>
 
+      <StateTransferPanel
+        state={cube}
+        onImport={(next) => {
+          setCube(cloneCube(next))
+        }}
+      />
 
       <section className="net-wrapper">
         <CubeNet
