@@ -10,6 +10,7 @@ type PersistedPlanPayload = {
   cubeSignature: string
   moves: Move[]
   savedAt: number
+  manualCompletion?: number[]
 }
 
 const PLAN_STORAGE_KEY = 'cubo-app/solve-plan-v1'
@@ -48,6 +49,69 @@ type MoveInstruction = {
 }
 
 type CopyStatus = 'idle' | 'copied' | 'error'
+
+const MoveTracker = ({
+  moves,
+  currentIndex,
+  completedManual,
+  onToggle,
+}: {
+  moves: Move[]
+  currentIndex: number
+  completedManual: Set<number>
+  onToggle: (index: number) => void
+}) => {
+  if (!moves.length) {
+    return (
+      <div className="move-tracker empty">
+        <p>Nessuna mossa calcolata.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="move-tracker">
+      <div className="move-tracker-head">
+        <p className="eyebrow small">Sequenza completa</p>
+        <p className="move-progress">
+          {currentIndex}/{moves.length}
+        </p>
+      </div>
+      <ol>
+        {moves.map((move, idx) => {
+          const isCurrent = idx === currentIndex - 1 && currentIndex > 0
+          const isUpcoming = idx >= currentIndex
+          const isCompleted = idx < currentIndex
+          const isManuallyDone = completedManual.has(idx)
+          return (
+            <li
+              key={`${move}-${idx}`}
+              className={[
+                isCurrent ? 'current' : '',
+                isUpcoming ? 'upcoming' : '',
+                isCompleted ? 'completed' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <div className="move-label">
+                <span className="move-index">{idx + 1}</span>
+                <strong>{move}</strong>
+              </div>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={isManuallyDone || isCompleted}
+                  onChange={() => onToggle(idx)}
+                />
+                Riprodotta
+              </label>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
 
 const SUPPORT_FACE_MAP: Record<Face, Face> = {
   U: 'F',
@@ -179,10 +243,11 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   const [loopEnabled, setLoopEnabled] = useState(false)
   const [planSignature, setPlanSignature] = useState<string | null>(null)
   const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle')
+  const [manualCompletion, setManualCompletion] = useState<Set<number>>(new Set())
   const stateSignature = useMemo(() => computeStateSignature(state), [state])
   const intervalRef = useRef<number | null>(null)
 
-  const persistPlan = (moves: Move[]) => {
+  const persistPlan = (moves: Move[], manual?: Set<number>) => {
     if (typeof window === 'undefined') {
       return
     }
@@ -190,6 +255,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       cubeSignature: stateSignature,
       moves,
       savedAt: Date.now(),
+      manualCompletion: manual ? Array.from(manual) : undefined,
     }
     window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(payload))
   }
@@ -203,6 +269,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       setIsPlaying(false)
       setPlanSignature(stateSignature)
       setCopyStatus('idle')
+      setManualCompletion(new Set())
       persistPlan(nextPlan.moves)
     } catch (err) {
       if (err instanceof Error) {
@@ -256,6 +323,21 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
     })
   }, [plan])
 
+  const handleToggleManual = (index: number) => {
+    setManualCompletion((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      if (plan) {
+        persistPlan(plan.moves, next)
+      }
+      return next
+    })
+  }
+
   useEffect(() => {
     if (planSignature === stateSignature) {
       return
@@ -280,6 +362,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
           setCurrentIndex(0)
           setError(null)
           setCopyStatus('idle')
+          setManualCompletion(new Set(persisted.manualCompletion ?? []))
           return
         }
       }
@@ -294,6 +377,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
     setCurrentIndex(0)
     setIsPlaying(false)
     setCopyStatus('idle')
+    setManualCompletion(new Set())
   }, [planSignature, stateSignature, state])
 
   useEffect(() => {
@@ -320,7 +404,11 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
           return 0
         }
         if (prevIndex >= lastIndex) {
-          return loopEnabled ? 0 : prevIndex
+          if (loopEnabled) {
+            setManualCompletion(new Set())
+            return 0
+          }
+          return prevIndex
         }
         return prevIndex + 1
       })
@@ -333,6 +421,20 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       }
     }
   }, [isPlaying, intervalMs, plan, loopEnabled])
+
+  useEffect(() => {
+    if (!plan) {
+      return
+    }
+    setManualCompletion((prev) => {
+      const next = new Set(prev)
+      for (let i = 0; i < currentIndex; i += 1) {
+        next.add(i)
+      }
+      persistPlan(plan.moves, next)
+      return next
+    })
+  }, [currentIndex, plan])
 
   useEffect(() => {
     if (!plan) {
@@ -468,7 +570,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
 
       {currentFrame && (
         <div className="solve-stage">
-          <div>
+          <div className="stage-text">
             <p className="eyebrow small">Passo corrente</p>
             <h3>{currentFrame.move ?? 'Start'}</h3>
             <p className="wizard-subtitle">
@@ -485,11 +587,19 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
               </div>
             )}
           </div>
-          <CubeNet
-            state={currentFrame.state}
-            changedStickers={changedStickers}
-            faceHints={faceHints}
-          />
+          <div className="stage-visual">
+            <CubeNet
+              state={currentFrame.state}
+              changedStickers={changedStickers}
+              faceHints={faceHints}
+            />
+            <MoveTracker
+              moves={plan?.moves ?? []}
+              currentIndex={currentIndex}
+              completedManual={manualCompletion}
+              onToggle={handleToggleManual}
+            />
+          </div>
         </div>
       )}
     </section>
