@@ -7,6 +7,7 @@ import HistoryPanel from './components/HistoryPanel'
 import FaceWizard from './components/FaceWizard'
 import FaceDiagnostics from './components/FaceDiagnostics'
 import SolvePlayer from './components/solver/SolvePlayer'
+import Cube3D from './components/Cube3D'
 import { createSolvedCube, cloneCube, createEmptyCube } from './lib/cube/state'
 import type { Color, Face, CubeState, Move } from './lib/cube/types'
 import { PLACEHOLDER_COLOR } from './lib/cube/types'
@@ -199,6 +200,10 @@ function App() {
   const [activeFace, setActiveFace] = useState<Face>(initialActive)
   const [guardMessage, setGuardMessage] = useState<string | null>(null)
   const [solverStatus, setSolverStatus] = useState<'idle' | 'complete'>('idle')
+  const [netOverrideVisible, setNetOverrideVisible] = useState(true)
+  const moveQueueRef = useRef<Move[]>([])
+  const [moveFeedVersion, setMoveFeedVersion] = useState(0)
+  const wasFullyAssignedRef = useRef(false)
   const validationIssues: ValidationIssue[] = []
   const { highlighted, issueMessages, faceIssues, issuesByFace } = useMemo(() => {
     const highlightMap: Partial<Record<Face, Set<number>>> = {}
@@ -278,6 +283,29 @@ function App() {
     return counts
   }, [cube])
 
+  const isCubeFullyAssigned = useMemo(() => {
+    return FACE_INPUT_ORDER.every((face) => {
+      return cube[face].every((color, idx) => {
+        if (idx === CENTER_INDEX) {
+          return true
+        }
+        return color !== PLACEHOLDER_COLOR
+      })
+    })
+  }, [cube])
+
+  useEffect(() => {
+    if (isCubeFullyAssigned && !wasFullyAssignedRef.current) {
+      setNetOverrideVisible(false)
+    }
+    if (!isCubeFullyAssigned) {
+      setNetOverrideVisible(true)
+    }
+    wasFullyAssignedRef.current = isCubeFullyAssigned
+  }, [isCubeFullyAssigned])
+
+  const shouldShowNet = !isCubeFullyAssigned || netOverrideVisible
+
   useEffect(() => {
     if (!guardMessage || typeof window === 'undefined') {
       return
@@ -285,6 +313,21 @@ function App() {
     const timer = window.setTimeout(() => setGuardMessage(null), 3000)
     return () => window.clearTimeout(timer)
   }, [guardMessage])
+
+  const enqueueMovesFor3D = (moves: Move[]) => {
+    if (!moves.length) {
+      return
+    }
+    moveQueueRef.current.push(...moves)
+    setMoveFeedVersion((prev) => prev + 1)
+  }
+
+  const rotationToMove = (face: Face, direction: FaceRotationDirection): Move => {
+    if (direction === 'cw') {
+      return face as Move
+    }
+    return `${face}'` as Move
+  }
 
   const handleResolutionComplete = () => {
     setSolverStatus('complete')
@@ -363,6 +406,7 @@ function App() {
     nextState[face] = rotated
     const nextTouched = cloneTouchedMap(touched)
     nextTouched[face] = rotateTouchedIndexes(nextTouched[face], direction)
+    enqueueMovesFor3D([rotationToMove(face, direction)])
     commitState(nextState, nextTouched, `Ruota ${face} ${direction === 'cw' ? '↻' : '↺'}`)
   }
 
@@ -388,6 +432,7 @@ function App() {
     if (!moves.length) {
       return
     }
+    enqueueMovesFor3D(moves)
     let nextState = cloneCube(cube)
     moves.forEach((move) => {
       nextState = applyMove(nextState, move)
@@ -508,14 +553,45 @@ function App() {
         onImport={handleImport}
       />
 
-      <section className="net-wrapper">
-        <CubeNet
-          state={cube}
-          highlightedStickers={highlighted}
-          issueMessages={issueMessages}
-          onStickerClick={handleStickerClick}
-          activeFace={activeFace}
-        />
+      <section className={`visual-panel ${shouldShowNet ? '' : 'visual-panel-full'}`}>
+        <div className="cube-3d-wrapper">
+          <div className="cube-3d-head">
+            <div>
+              <p className="eyebrow small">Preview tridimensionale</p>
+              <h3>Cubo in 3D</h3>
+              <p className="cube-3d-subtitle">
+                {isCubeFullyAssigned
+                  ? 'Trascina con il mouse per orbitare, usa la rotellina per zoomare: tutte le rotazioni avvengono sul cubo 3D.'
+                  : 'Completa la mappatura in 2D per attivare l’anteprima tridimensionale interattiva.'}
+              </p>
+            </div>
+            {isCubeFullyAssigned && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setNetOverrideVisible((prev) => !prev)}
+              >
+                {shouldShowNet ? 'Nascondi editor 2D' : 'Mostra editor 2D'}
+              </button>
+            )}
+          </div>
+          <Cube3D
+            state={cube}
+            moveFeedVersion={moveFeedVersion}
+            moveQueueRef={moveQueueRef}
+          />
+        </div>
+        {shouldShowNet && (
+          <div className="net-wrapper">
+            <CubeNet
+              state={cube}
+              highlightedStickers={highlighted}
+              issueMessages={issueMessages}
+              onStickerClick={handleStickerClick}
+              activeFace={activeFace}
+            />
+          </div>
+        )}
       </section>
       <ValidationPanel issues={validationIssues} />
       {solverStatus === 'complete' && (
