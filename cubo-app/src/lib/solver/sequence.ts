@@ -21,7 +21,7 @@ export type SolveFrame = {
   phase: SolvePhaseId
 }
 
-export type SolveStageId = 'white-cross' | 'first-layer' | 'second-layer' | 'full-solve'
+export type SolveStageId = 'white-cross' | 'first-layer' | 'second-layer' | 'pll' | 'full-solve'
 
 export type SolveStage = {
   id: SolveStageId
@@ -286,11 +286,28 @@ const isSecondLayerSolved = (state: CubeState) => {
   })
 }
 
+const isOllSolved = (state: CubeState) => {
+  if (!isSecondLayerSolved(state)) {
+    return false
+  }
+  const downColor = state.D[4]
+  return state.D.every((color) => color === downColor)
+}
+
+const isCubeSolved = (state: CubeState) => {
+  return CUBEJS_FACE_ORDER.every((face) => {
+    const faceColor = state[face][4]
+    return state[face].every((sticker) => sticker === faceColor)
+  })
+}
+
 const buildStages = (frames: SolveFrame[], moves: Move[]): SolveStage[] => {
   const stages: SolveStage[] = []
   let whiteCrossFrameIndex: number | null = null
   let firstLayerFrameIndex: number | null = null
   let secondLayerFrameIndex: number | null = null
+  let ollFrameIndex: number | null = null
+  let solvedFrameIndex: number | null = null
 
   for (let i = 0; i < frames.length; i += 1) {
     const frameState = frames[i].state
@@ -303,49 +320,81 @@ const buildStages = (frames: SolveFrame[], moves: Move[]): SolveStage[] => {
     if (secondLayerFrameIndex == null && isSecondLayerSolved(frameState)) {
       secondLayerFrameIndex = i
     }
-    if (whiteCrossFrameIndex != null && firstLayerFrameIndex != null && secondLayerFrameIndex != null) {
+    if (ollFrameIndex == null && isOllSolved(frameState)) {
+      ollFrameIndex = i
+    }
+    if (solvedFrameIndex == null && isCubeSolved(frameState)) {
+      solvedFrameIndex = i
       break
     }
   }
 
-  if (whiteCrossFrameIndex !== null && whiteCrossFrameIndex > 0) {
-    const moveCount = whiteCrossFrameIndex
+  let lastFrameIndex = 0
+  const registerStage = (
+    stage: {
+      id: SolveStageId
+      label: string
+      description: string
+      completionFrameIndex: number | null
+      customStartFrameIndex?: number
+    },
+  ) => {
+    const { completionFrameIndex, customStartFrameIndex, id, label, description } = stage
+    if (completionFrameIndex == null) {
+      return
+    }
+    const startFrameIndex = customStartFrameIndex ?? lastFrameIndex
+    if (completionFrameIndex <= startFrameIndex) {
+      lastFrameIndex = Math.max(lastFrameIndex, completionFrameIndex)
+      return
+    }
+    const startMoveIndex = startFrameIndex
+    const endMoveIndex = completionFrameIndex - 1
+    const moveCount = endMoveIndex - startMoveIndex + 1
+    if (moveCount <= 0) {
+      lastFrameIndex = Math.max(lastFrameIndex, completionFrameIndex)
+      return
+    }
     stages.push({
-      id: 'white-cross',
-      label: 'Croce bianca',
-      description: 'Completa la croce sulla faccia superiore mantenendo gli spigoli allineati.',
-      startMoveIndex: 0,
-      endMoveIndex: moveCount - 1,
+      id,
+      label,
+      description,
+      startMoveIndex,
+      endMoveIndex,
       moveCount,
-      previewMoves: moves.slice(0, moveCount),
+      previewMoves: moves.slice(startMoveIndex, completionFrameIndex),
     })
+    lastFrameIndex = Math.max(lastFrameIndex, completionFrameIndex)
   }
 
-  if (firstLayerFrameIndex !== null && firstLayerFrameIndex > 0) {
-    const moveCount = firstLayerFrameIndex
-    stages.push({
-      id: 'first-layer',
-      label: 'Primo strato',
-      description: 'Completa gli angoli bianchi e allinea il primo strato.',
-      startMoveIndex: 0,
-      endMoveIndex: moveCount - 1,
-      moveCount,
-      previewMoves: moves.slice(0, moveCount),
-    })
-  }
+  registerStage({
+    id: 'white-cross',
+    label: 'Croce bianca',
+    description: 'Completa la croce sulla faccia superiore mantenendo gli spigoli allineati.',
+    completionFrameIndex: whiteCrossFrameIndex,
+  })
 
-  if (secondLayerFrameIndex !== null && secondLayerFrameIndex > 0) {
-    const moveCount = secondLayerFrameIndex
-    stages.push({
-      id: 'second-layer',
-      label: 'Secondo strato',
-      description: 'Inserisci gli spigoli della fascia centrale senza alterare il bianco.',
-      startMoveIndex: 0,
-      endMoveIndex: moveCount - 1,
-      moveCount,
-      previewMoves: moves.slice(0, moveCount),
-    })
-  }
+  registerStage({
+    id: 'first-layer',
+    label: 'Primo strato',
+    description: 'Completa gli angoli bianchi e allinea il primo strato.',
+    completionFrameIndex: firstLayerFrameIndex,
+  })
+
+  registerStage({
+    id: 'second-layer',
+    label: 'Secondo strato',
+    description: 'Inserisci gli spigoli della fascia centrale senza alterare il bianco.',
+    completionFrameIndex: secondLayerFrameIndex,
+  })
+
+  registerStage({
+    id: 'pll',
+    label: 'Permutazione finale (PLL)',
+    description: 'Permuta gli ultimi pezzi mantenendo orientati gli sticker gialli.',
+    completionFrameIndex: solvedFrameIndex,
+    customStartFrameIndex: ollFrameIndex ?? lastFrameIndex,
+  })
 
   if (moves.length) {
     stages.push({
@@ -355,7 +404,7 @@ const buildStages = (frames: SolveFrame[], moves: Move[]): SolveStage[] => {
       startMoveIndex: 0,
       endMoveIndex: moves.length - 1,
       moveCount: moves.length,
-      previewMoves: moves,
+      previewMoves: moves.slice(0),
     })
   }
 

@@ -315,6 +315,7 @@ const SolvePlayer = ({ state, onApplyMoves, onResolutionComplete, onResolutionRe
   const whiteCrossStage = stageById('white-cross')
   const firstLayerStage = stageById('first-layer')
   const secondLayerStage = stageById('second-layer')
+  const pllStage = stageById('pll')
 
   const canApplyStage = (stage: ReturnType<typeof stageById>) => {
     if (!stage || !onApplyMoves) {
@@ -696,7 +697,7 @@ const SolvePlayer = ({ state, onApplyMoves, onResolutionComplete, onResolutionRe
       {copyStatus === 'copied' && <p className="copy-feedback success">Sequenza copiata negli appunti.</p>}
       {copyStatus === 'error' && <p className="copy-feedback error">Impossibile copiare la sequenza: riprova manualmente.</p>}
 
-      {[whiteCrossStage, firstLayerStage, secondLayerStage]
+      {[whiteCrossStage, firstLayerStage, secondLayerStage, pllStage]
         .filter(Boolean)
         .map((stage) => (
           <div key={stage!.id} className="solve-stage-card">
