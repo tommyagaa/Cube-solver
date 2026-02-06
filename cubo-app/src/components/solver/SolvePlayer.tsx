@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CubeState, Face } from '../../lib/cube/types'
 import CubeNet from '../CubeNet'
 import type { SolveFrame, SolvePlan } from '../../lib/solver/sequence'
@@ -33,6 +33,9 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   const [plan, setPlan] = useState<SolvePlan | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [intervalMs, setIntervalMs] = useState(1200)
+  const intervalRef = useRef<number | null>(null)
 
   const ensurePlan = () => {
     try {
@@ -40,6 +43,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       setPlan(nextPlan)
       setCurrentIndex(0)
       setError(null)
+      setIsPlaying(false)
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message)
@@ -69,8 +73,14 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
     setCurrentIndex(nextIndex)
   }
 
-  const prev = () => goTo(currentIndex - 1)
-  const next = () => goTo(currentIndex + 1)
+  const prev = () => {
+    setIsPlaying(false)
+    goTo(currentIndex - 1)
+  }
+  const next = () => {
+    setIsPlaying(false)
+    goTo(currentIndex + 1)
+  }
 
   const captions = useMemo(() => {
     if (!plan) {
@@ -83,6 +93,68 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       return `Frame ${idx} · ${frame.notation}`
     })
   }, [plan])
+
+  useEffect(() => {
+    if (!isPlaying || !plan) {
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      return
+    }
+    if (currentIndex >= frames.length - 1) {
+      setIsPlaying(false)
+      return
+    }
+    intervalRef.current = window.setInterval(() => {
+      setCurrentIndex((prevIndex) => {
+        if (!plan || prevIndex >= plan.frames.length - 1) {
+          return prevIndex
+        }
+        return prevIndex + 1
+      })
+    }, intervalMs)
+    return () => {
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [isPlaying, intervalMs, plan, frames.length, currentIndex])
+
+  useEffect(() => {
+    if (!plan) {
+      setIsPlaying(false)
+      return
+    }
+    if (currentIndex >= plan.frames.length - 1) {
+      setIsPlaying(false)
+    }
+  }, [currentIndex, plan])
+
+  const togglePlay = () => {
+    if (!plan) {
+      return
+    }
+    if (isPlaying) {
+      setIsPlaying(false)
+      return
+    }
+    if (currentIndex >= plan.frames.length - 1) {
+      setCurrentIndex(0)
+    }
+    setIsPlaying(true)
+  }
+
+  const renderPlayLabel = () => {
+    if (!plan) {
+      return '▶ Play'
+    }
+    if (currentIndex >= plan.frames.length - 1) {
+      return '↺ Restart'
+    }
+    return isPlaying ? '⏸ Pause' : '▶ Play'
+  }
 
   return (
     <section className="solve-player">
@@ -97,6 +169,14 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       <div className="solve-controls">
         <button type="button" className="primary" onClick={ensurePlan}>
           Calcola soluzione
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={togglePlay}
+          disabled={!hasPlan}
+        >
+          {renderPlayLabel()}
         </button>
         <div className="player-buttons">
           <button type="button" onClick={() => goTo(0)} disabled={!hasPlan || currentIndex === 0}>
@@ -119,6 +199,18 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
           >
             Fine ⏭
           </button>
+          <label className="player-speed">
+            Velocità
+            <select
+              value={intervalMs}
+              onChange={(event) => setIntervalMs(Number(event.target.value))}
+              disabled={!hasPlan}
+            >
+              <option value={800}>0.8s</option>
+              <option value={1200}>1.2s</option>
+              <option value={2000}>2s</option>
+            </select>
+          </label>
         </div>
       </div>
 
