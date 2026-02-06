@@ -113,12 +113,20 @@ const buildFrames = (initial: CubeState, moves: Move[]): SolveFrame[] => {
   return frames
 }
 
-export const createSolvePlan = (state: CubeState): SolvePlan => {
-  const moves = deriveSolutionMoves(state)
+const buildPlan = (state: CubeState, moves: Move[]): SolvePlan => {
   const frames = buildFrames(state, moves)
   return {
     phases: SOLVE_PHASES,
     moves,
     frames,
   }
+}
+
+export const createSolvePlan = (state: CubeState): SolvePlan => {
+  const moves = deriveSolutionMoves(state)
+  return buildPlan(state, moves)
+}
+
+export const createSolvePlanFromMoves = (state: CubeState, moves: Move[]): SolvePlan => {
+  return buildPlan(state, moves)
 }
