@@ -35,6 +35,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   const [error, setError] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [intervalMs, setIntervalMs] = useState(1200)
+  const [loopEnabled, setLoopEnabled] = useState(false)
   const intervalRef = useRef<number | null>(null)
 
   const ensurePlan = () => {
@@ -95,42 +96,44 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   }, [plan])
 
   useEffect(() => {
+    if (intervalRef.current) {
+      window.clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
     if (!isPlaying || !plan) {
-      if (intervalRef.current) {
-        window.clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
       return
     }
-    if (currentIndex >= frames.length - 1) {
-      setIsPlaying(false)
-      return
-    }
+
+    const lastIndex = plan.frames.length - 1
     intervalRef.current = window.setInterval(() => {
       setCurrentIndex((prevIndex) => {
-        if (!plan || prevIndex >= plan.frames.length - 1) {
-          return prevIndex
+        if (lastIndex < 0) {
+          return 0
+        }
+        if (prevIndex >= lastIndex) {
+          return loopEnabled ? 0 : prevIndex
         }
         return prevIndex + 1
       })
     }, intervalMs)
+
     return () => {
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current)
         intervalRef.current = null
       }
     }
-  }, [isPlaying, intervalMs, plan, frames.length, currentIndex])
+  }, [isPlaying, intervalMs, plan, loopEnabled])
 
   useEffect(() => {
     if (!plan) {
       setIsPlaying(false)
       return
     }
-    if (currentIndex >= plan.frames.length - 1) {
+    if (!loopEnabled && currentIndex >= plan.frames.length - 1) {
       setIsPlaying(false)
     }
-  }, [currentIndex, plan])
+  }, [currentIndex, plan, loopEnabled])
 
   const togglePlay = () => {
     if (!plan) {
@@ -210,6 +213,15 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
               <option value={1200}>1.2s</option>
               <option value={2000}>2s</option>
             </select>
+          </label>
+          <label className="player-loop">
+            <input
+              type="checkbox"
+              checked={loopEnabled}
+              onChange={(event) => setLoopEnabled(event.target.checked)}
+              disabled={!hasPlan}
+            />
+            Loop continuo
           </label>
         </div>
       </div>
