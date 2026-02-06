@@ -499,11 +499,6 @@ function App() {
         onRotateFace={handleRotateFace}
       />
 
-      <FaceDiagnostics
-        activeFace={activeFace}
-        issues={issuesByFace[activeFace] ?? []}
-      />
-
       <section className="palette">
         <p>Scegli il colore attivo</p>
         <div className="swatches">
@@ -541,58 +536,67 @@ function App() {
         </button>
       </div>
 
-      <HistoryPanel
-        entries={timeline.entries.map(({ id, label }) => ({ id, label }))}
-        currentIndex={timeline.index}
-        onUndo={undo}
-        onRedo={redo}
-      />
-
-      <StateTransferPanel
-        state={cube}
-        onImport={handleImport}
-      />
-
-      <section className={`visual-panel ${shouldShowNet ? '' : 'visual-panel-full'}`}>
-        <div className="cube-3d-wrapper">
-          <div className="cube-3d-head">
-            <div>
-              <p className="eyebrow small">Preview tridimensionale</p>
-              <h3>Cubo in 3D</h3>
-              <p className="cube-3d-subtitle">
-                {isCubeFullyAssigned
-                  ? 'Trascina con il mouse per orbitare, usa la rotellina per zoomare: tutte le rotazioni avvengono sul cubo 3D.'
-                  : 'Completa la mappatura in 2D per attivare l’anteprima tridimensionale interattiva.'}
-              </p>
-            </div>
-            {isCubeFullyAssigned && (
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setNetOverrideVisible((prev) => !prev)}
-              >
-                {shouldShowNet ? 'Nascondi editor 2D' : 'Mostra editor 2D'}
-              </button>
-            )}
-          </div>
-          <Cube3D
-            state={cube}
-            moveFeedVersion={moveFeedVersion}
-            moveQueueRef={moveQueueRef}
+      <section className="experience-grid">
+        <div className="experience-column timeline-column">
+          <HistoryPanel
+            entries={timeline.entries.map(({ id, label }) => ({ id, label }))}
+            currentIndex={timeline.index}
+            onUndo={undo}
+            onRedo={redo}
           />
         </div>
-        {shouldShowNet && (
-          <div className="net-wrapper">
-            <CubeNet
+        <div className="experience-column cube-column">
+          <div className="cube-3d-wrapper">
+            <div className="cube-3d-head">
+              <div>
+                <p className="eyebrow small">Preview tridimensionale</p>
+                <h3>Cubo in 3D</h3>
+                <p className="cube-3d-subtitle">
+                  {isCubeFullyAssigned
+                    ? 'Trascina con il mouse per orbitare, usa la rotellina per zoomare: tutte le rotazioni avvengono sul cubo 3D.'
+                    : 'Completa la mappatura in 2D per attivare l’anteprima tridimensionale interattiva.'}
+                </p>
+              </div>
+              {isCubeFullyAssigned && (
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setNetOverrideVisible((prev) => !prev)}
+                >
+                  {shouldShowNet ? 'Nascondi editor 2D' : 'Mostra editor 2D'}
+                </button>
+              )}
+            </div>
+            <Cube3D
               state={cube}
-              highlightedStickers={highlighted}
-              issueMessages={issueMessages}
-              onStickerClick={handleStickerClick}
-              activeFace={activeFace}
+              moveFeedVersion={moveFeedVersion}
+              moveQueueRef={moveQueueRef}
             />
           </div>
-        )}
+        </div>
+        <div className="experience-column transfer-column">
+          <StateTransferPanel
+            state={cube}
+            onImport={handleImport}
+          />
+          <FaceDiagnostics
+            activeFace={activeFace}
+            issues={issuesByFace[activeFace] ?? []}
+          />
+        </div>
       </section>
+
+      {shouldShowNet && (
+        <div className="net-wrapper net-standalone">
+          <CubeNet
+            state={cube}
+            highlightedStickers={highlighted}
+            issueMessages={issueMessages}
+            onStickerClick={handleStickerClick}
+            activeFace={activeFace}
+          />
+        </div>
+      )}
       <ValidationPanel issues={validationIssues} />
       {solverStatus === 'complete' && (
         <section className="resolution-banner">

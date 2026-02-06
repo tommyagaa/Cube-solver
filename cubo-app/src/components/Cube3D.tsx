@@ -3,6 +3,8 @@ import type { MutableRefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { CubeState, Face, Move, MoveModifier } from '../lib/cube/types'
+import { cloneCube } from '../lib/cube/state'
+import { applyMove } from '../lib/cube/moves'
 
 const COLOR_MAP: Record<string, string> = {
   white: '#f8fafc',
@@ -145,7 +147,8 @@ const Cube3D = ({ state, moveFeedVersion, moveQueueRef }: Cube3DProps) => {
   const resizeHandlerRef = useRef<(() => void) | null>(null)
   const pendingMovesRef = useRef<Move[]>([])
   const isAnimatingRef = useRef(false)
-  const latestStateRef = useRef(state)
+  const latestStateRef = useRef(cloneCube(state))
+  const displayedStateRef = useRef(cloneCube(state))
   const animationFrameRef = useRef<number | null>(null)
   const [viewerStatus, setViewerStatus] = useState<ViewerStatus>('loading')
   const [viewerMessage, setViewerMessage] = useState('Inizializzazione vista 3D...')
@@ -164,6 +167,11 @@ const Cube3D = ({ state, moveFeedVersion, moveQueueRef }: Cube3DProps) => {
       const nextColor = cubeState[face][index]
       material.color.set(getColorHex(nextColor))
     })
+  }
+
+  const syncDisplayedState = (cubeState: CubeState) => {
+    displayedStateRef.current = cloneCube(cubeState)
+    applyColors(displayedStateRef.current)
   }
 
   const buildStickers = (group: THREE.Group) => {
@@ -277,7 +285,7 @@ const Cube3D = ({ state, moveFeedVersion, moveQueueRef }: Cube3DProps) => {
       cubeGroupRef.current = cubeGroup
 
       buildStickers(cubeGroup)
-      applyColors(state)
+      syncDisplayedState(state)
 
       setViewerStatus('ready')
       setViewerMessage('')
@@ -379,11 +387,14 @@ const Cube3D = ({ state, moveFeedVersion, moveQueueRef }: Cube3DProps) => {
     }
     const nextMove = pendingMovesRef.current.shift()
     if (!nextMove) {
+      syncDisplayedState(latestStateRef.current)
       return
     }
     isAnimatingRef.current = true
     await rotateLayer(nextMove)
-    applyColors(latestStateRef.current)
+    const nextDisplayState = applyMove(displayedStateRef.current, nextMove)
+    displayedStateRef.current = nextDisplayState
+    applyColors(displayedStateRef.current)
     isAnimatingRef.current = false
     processQueue()
   }
@@ -423,9 +434,9 @@ const Cube3D = ({ state, moveFeedVersion, moveQueueRef }: Cube3DProps) => {
   }, [initAttempt])
 
   useEffect(() => {
-    latestStateRef.current = state
-    if (!isAnimatingRef.current) {
-      applyColors(state)
+    latestStateRef.current = cloneCube(state)
+    if (!isAnimatingRef.current && pendingMovesRef.current.length === 0) {
+      syncDisplayedState(state)
     }
   }, [state])
 
