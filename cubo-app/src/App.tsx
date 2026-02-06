@@ -6,6 +6,7 @@ import StateTransferPanel from './components/StateTransferPanel'
 import HistoryPanel from './components/HistoryPanel'
 import FaceWizard from './components/FaceWizard'
 import FaceDiagnostics from './components/FaceDiagnostics'
+import SolvePlayer from './components/solver/SolvePlayer'
 import { createSolvedCube, cloneCube, createEmptyCube } from './lib/cube/state'
 import type { Color, Face, CubeState } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
@@ -455,6 +456,7 @@ function App() {
         />
       </section>
       <ValidationPanel issues={validationIssues} />
+      <SolvePlayer state={cube} />
     </main>
   )
 }
