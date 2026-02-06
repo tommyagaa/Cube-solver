@@ -55,11 +55,13 @@ const MoveTracker = ({
   currentIndex,
   completedManual,
   onToggle,
+  appliedCount,
 }: {
   moves: Move[]
   currentIndex: number
   completedManual: Set<number>
   onToggle: (index: number) => void
+  appliedCount: number
 }) => {
   if (!moves.length) {
     return (
@@ -68,27 +70,29 @@ const MoveTracker = ({
       </div>
     )
   }
+  const previewIndex = currentIndex > 0 ? currentIndex - 1 : -1
   return (
     <div className="move-tracker">
       <div className="move-tracker-head">
         <p className="eyebrow small">Sequenza completa</p>
         <p className="move-progress">
-          {currentIndex}/{moves.length}
+          Anteprima {Math.max(0, Math.min(currentIndex, moves.length))}/{moves.length} · Cubo {appliedCount}/{moves.length}
         </p>
       </div>
       <ol>
         {moves.map((move, idx) => {
-          const isCurrent = idx === currentIndex - 1 && currentIndex > 0
-          const isUpcoming = idx >= currentIndex
-          const isCompleted = idx < currentIndex
+          const isCurrentPreview = previewIndex >= 0 && idx === previewIndex
+          const isPreviewed = previewIndex >= 0 && idx < previewIndex
+          const isUpcoming = previewIndex < 0 ? true : idx > previewIndex
           const isManuallyDone = completedManual.has(idx)
           return (
             <li
               key={`${move}-${idx}`}
               className={[
-                isCurrent ? 'current' : '',
+                isCurrentPreview ? 'current' : '',
+                isPreviewed ? 'previewed' : '',
                 isUpcoming ? 'upcoming' : '',
-                isCompleted ? 'completed' : '',
+                isManuallyDone ? 'completed' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -100,7 +104,7 @@ const MoveTracker = ({
               <label>
                 <input
                   type="checkbox"
-                  checked={isManuallyDone || isCompleted}
+                  checked={isManuallyDone}
                   onChange={() => onToggle(idx)}
                 />
                 Riprodotta
@@ -232,9 +236,10 @@ const buildChangedMap = (previous: CubeState | null, current: CubeState | null):
 
 export type SolvePlayerProps = {
   state: CubeState
+  onApplyMoves?: (moves: Move[], options?: { label?: string }) => void
 }
 
-const SolvePlayer = ({ state }: SolvePlayerProps) => {
+const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
   const [plan, setPlan] = useState<SolvePlan | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -244,15 +249,18 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   const [planSignature, setPlanSignature] = useState<string | null>(null)
   const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle')
   const [manualCompletion, setManualCompletion] = useState<Set<number>>(new Set())
+  const [appliedCount, setAppliedCount] = useState(0)
   const stateSignature = useMemo(() => computeStateSignature(state), [state])
   const intervalRef = useRef<number | null>(null)
 
+    const totalMoves = plan?.moves.length ?? 0
+    const remainingMoves = Math.max(0, totalMoves - appliedCount)
   const persistPlan = (moves: Move[], manual?: Set<number>) => {
     if (typeof window === 'undefined') {
       return
     }
     const payload: PersistedPlanPayload = {
-      cubeSignature: stateSignature,
+      cubeSignature: planSignature ?? stateSignature,
       moves,
       savedAt: Date.now(),
       manualCompletion: manual ? Array.from(manual) : undefined,
@@ -270,6 +278,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       setPlanSignature(stateSignature)
       setCopyStatus('idle')
       setManualCompletion(new Set())
+      setAppliedCount(0)
       persistPlan(nextPlan.moves)
     } catch (err) {
       if (err instanceof Error) {
@@ -339,46 +348,48 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   }
 
   useEffect(() => {
-    if (planSignature === stateSignature) {
+    if (plan || typeof window === 'undefined') {
       return
     }
-    if (typeof window === 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(PLAN_STORAGE_KEY)
+      if (!raw) {
+        return
+      }
+      const persisted = JSON.parse(raw) as PersistedPlanPayload
+      if (persisted.cubeSignature !== stateSignature) {
+        return
+      }
+      const restoredPlan = createSolvePlanFromMoves(state, persisted.moves)
+      setPlan(restoredPlan)
+      setPlanSignature(persisted.cubeSignature)
+      setCurrentIndex(0)
+      setError(null)
+      setCopyStatus('idle')
+      setManualCompletion(new Set(persisted.manualCompletion ?? []))
+      setAppliedCount(0)
+    } catch (restoreError) {
+      console.warn('Impossibile ripristinare il piano', restoreError)
+    }
+  }, [plan, stateSignature, state])
+
+  useEffect(() => {
+    if (!plan) {
+      return
+    }
+    if (appliedCount > 0 || manualCompletion.size > 0) {
+      return
+    }
+    if (planSignature && planSignature !== stateSignature) {
       setPlan(null)
       setPlanSignature(null)
       setCurrentIndex(0)
       setIsPlaying(false)
       setCopyStatus('idle')
-      return
+      setManualCompletion(new Set())
+      setAppliedCount(0)
     }
-
-    try {
-      const raw = window.localStorage.getItem(PLAN_STORAGE_KEY)
-      if (raw) {
-        const persisted = JSON.parse(raw) as PersistedPlanPayload
-        if (persisted.cubeSignature === stateSignature) {
-          const restoredPlan = createSolvePlanFromMoves(state, persisted.moves)
-          setPlan(restoredPlan)
-          setPlanSignature(stateSignature)
-          setCurrentIndex(0)
-          setError(null)
-          setCopyStatus('idle')
-          setManualCompletion(new Set(persisted.manualCompletion ?? []))
-          return
-        }
-      }
-    } catch (restoreError) {
-      console.warn('Impossibile ripristinare il piano', restoreError)
-    }
-
-    if (planSignature !== null) {
-      setPlan(null)
-      setPlanSignature(null)
-    }
-    setCurrentIndex(0)
-    setIsPlaying(false)
-    setCopyStatus('idle')
-    setManualCompletion(new Set())
-  }, [planSignature, stateSignature, state])
+  }, [plan, planSignature, stateSignature, manualCompletion, appliedCount])
 
   useEffect(() => {
     if (copyStatus === 'idle' || typeof window === 'undefined') {
@@ -405,7 +416,6 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
         }
         if (prevIndex >= lastIndex) {
           if (loopEnabled) {
-            setManualCompletion(new Set())
             return 0
           }
           return prevIndex
@@ -421,20 +431,6 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
       }
     }
   }, [isPlaying, intervalMs, plan, loopEnabled])
-
-  useEffect(() => {
-    if (!plan) {
-      return
-    }
-    setManualCompletion((prev) => {
-      const next = new Set(prev)
-      for (let i = 0; i < currentIndex; i += 1) {
-        next.add(i)
-      }
-      persistPlan(plan.moves, next)
-      return next
-    })
-  }, [currentIndex, plan])
 
   useEffect(() => {
     if (!plan) {
@@ -486,6 +482,48 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
     } catch {
       setCopyStatus('error')
     }
+  }
+
+  const handleApplyVirtualStep = () => {
+    if (!plan || !onApplyMoves) {
+      return
+    }
+    if (appliedCount >= plan.moves.length) {
+      return
+    }
+    const targetIndex = appliedCount
+    const move = plan.moves[targetIndex]
+    onApplyMoves([move], { label: `Applica ${move}` })
+    setAppliedCount(targetIndex + 1)
+    setManualCompletion((prev) => {
+      const next = new Set(prev)
+      next.add(targetIndex)
+      persistPlan(plan.moves, next)
+      return next
+    })
+  }
+
+  const handleApplyRemaining = () => {
+    if (!plan || !onApplyMoves) {
+      return
+    }
+    const remaining = plan.moves.slice(appliedCount)
+    if (!remaining.length) {
+      return
+    }
+    onApplyMoves(remaining, {
+      label: `Applica ultime ${remaining.length} mosse solver`,
+    })
+    const total = plan.moves.length
+    setAppliedCount(total)
+    setManualCompletion(() => {
+      const next = new Set<number>()
+      for (let i = 0; i < total; i += 1) {
+        next.add(i)
+      }
+      persistPlan(plan.moves, next)
+      return next
+    })
   }
 
   return (
@@ -598,8 +636,31 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
               currentIndex={currentIndex}
               completedManual={manualCompletion}
               onToggle={handleToggleManual}
+              appliedCount={appliedCount}
             />
           </div>
+        </div>
+      )}
+
+      {plan && onApplyMoves && (
+        <div className="solve-apply-controls">
+          <button
+            type="button"
+            className="ghost"
+            onClick={handleApplyVirtualStep}
+            disabled={!remainingMoves}
+          >
+            Applica passo sul cubo
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={handleApplyRemaining}
+            disabled={remainingMoves === 0}
+          >
+            Completa sequenza sul cubo
+          </button>
+          <p className="apply-progress">Cubo virtuale: {appliedCount}/{totalMoves}</p>
         </div>
       )}
     </section>

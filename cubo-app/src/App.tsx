@@ -8,10 +8,11 @@ import FaceWizard from './components/FaceWizard'
 import FaceDiagnostics from './components/FaceDiagnostics'
 import SolvePlayer from './components/solver/SolvePlayer'
 import { createSolvedCube, cloneCube, createEmptyCube } from './lib/cube/state'
-import type { Color, Face, CubeState } from './lib/cube/types'
+import type { Color, Face, CubeState, Move } from './lib/cube/types'
 import { validateCubeState } from './lib/cube/validation'
 import type { ValidationIssue } from './lib/cube/validation'
 import { FACE_INPUT_ORDER } from './lib/cube/faceOrder'
+import { applyMove } from './lib/cube/moves'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
@@ -337,6 +338,20 @@ function App() {
     })
   }
 
+  const handleApplySolverMoves = (moves: Move[], options?: { label?: string }) => {
+    if (!moves.length) {
+      return
+    }
+    let nextState = cloneCube(cube)
+    moves.forEach((move) => {
+      nextState = applyMove(nextState, move)
+    })
+    const fullTouched = createFullTouchedMap()
+    commitState(nextState, fullTouched, options?.label ?? `Applica ${moves.length} mosse solver`)
+    setCompletedFaces(new Set(FACE_INPUT_ORDER))
+    setActiveFace('U')
+  }
+
   useEffect(() => {
     saveSession(cube, completedFaces, activeFace, touched)
   }, [cube, completedFaces, activeFace, touched])
@@ -456,7 +471,10 @@ function App() {
         />
       </section>
       <ValidationPanel issues={validationIssues} />
-      <SolvePlayer state={cube} />
+      <SolvePlayer
+        state={cube}
+        onApplyMoves={handleApplySolverMoves}
+      />
     </main>
   )
 }
