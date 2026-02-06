@@ -1,8 +1,29 @@
 import { useMemo, useState } from 'react'
-import type { CubeState } from '../../lib/cube/types'
+import type { CubeState, Face } from '../../lib/cube/types'
 import CubeNet from '../CubeNet'
 import type { SolveFrame, SolvePlan } from '../../lib/solver/sequence'
 import { createSolvePlan } from '../../lib/solver/sequence'
+
+type ChangedMap = Partial<Record<Face, Set<number>>>
+
+const buildChangedMap = (previous: CubeState | null, current: CubeState | null): ChangedMap => {
+  if (!previous || !current) {
+    return {}
+  }
+  const faces = Object.keys(current) as Face[]
+  const map: ChangedMap = {}
+  faces.forEach((face) => {
+    current[face].forEach((color, idx) => {
+      if (previous[face][idx] !== color) {
+        if (!map[face]) {
+          map[face] = new Set()
+        }
+        map[face]!.add(idx)
+      }
+    })
+  })
+  return map
+}
 
 export type SolvePlayerProps = {
   state: CubeState
@@ -33,6 +54,14 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   const nextMove = plan?.moves[currentIndex] ?? null
 
   const hasPlan = Boolean(plan && plan.moves.length)
+
+  const changedStickers = useMemo(() => {
+    if (!plan || !currentFrame) {
+      return {}
+    }
+    const prevState = currentIndex > 0 ? frames[currentIndex - 1]?.state ?? null : null
+    return buildChangedMap(prevState, currentFrame.state)
+  }, [plan, frames, currentFrame, currentIndex])
 
   const goTo = (index: number) => {
     if (!plan) return
@@ -104,7 +133,10 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
               {captions[currentIndex] ?? 'Frame'}. Prossima mossa: {nextMove ?? '—'}
             </p>
           </div>
-          <CubeNet state={currentFrame.state} />
+          <CubeNet
+            state={currentFrame.state}
+            changedStickers={changedStickers}
+          />
         </div>
       )}
     </section>

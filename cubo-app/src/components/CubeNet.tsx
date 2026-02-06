@@ -12,9 +12,10 @@ type CubeNetProps = {
   highlightedStickers?: HighlightMap
   issueMessages?: IssueMessageMap
   activeFace?: Face
+  changedStickers?: HighlightMap
 }
 
-const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, activeFace }: CubeNetProps) => {
+const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, activeFace, changedStickers }: CubeNetProps) => {
   return (
     <div className="cube-net">
       {FACE_INPUT_ORDER.map((face) => (
@@ -23,6 +24,7 @@ const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, ac
           <div className="grid">
             {state[face].map((color, idx) => {
               const isHighlighted = highlightedStickers?.[face]?.has(idx) ?? false
+              const isChanged = changedStickers?.[face]?.has(idx) ?? false
               const tooltip = issueMessages?.[face]?.[idx]
               const tooltipText = tooltip?.join(' • ')
               const isLocked = Boolean(activeFace && face !== activeFace)
@@ -30,7 +32,7 @@ const CubeNet = ({ state, onStickerClick, highlightedStickers, issueMessages, ac
               return (
                 <button
                   key={idx}
-                  className={`sticker ${isHighlighted ? 'sticker-error' : ''}`}
+                  className={`sticker ${isHighlighted ? 'sticker-error' : ''} ${isChanged ? 'sticker-changed' : ''}`}
                   data-highlighted={isHighlighted ? 'true' : 'false'}
                   data-issue={tooltipText}
                   title={tooltipText}
