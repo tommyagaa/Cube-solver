@@ -9,17 +9,41 @@ import FaceDiagnostics from './components/FaceDiagnostics'
 import SolvePlayer from './components/solver/SolvePlayer'
 import { createSolvedCube, cloneCube, createEmptyCube } from './lib/cube/state'
 import type { Color, Face, CubeState, Move } from './lib/cube/types'
-import { validateCubeState } from './lib/cube/validation'
+import { PLACEHOLDER_COLOR } from './lib/cube/types'
 import type { ValidationIssue } from './lib/cube/validation'
 import { FACE_INPUT_ORDER } from './lib/cube/faceOrder'
 import { applyMove } from './lib/cube/moves'
 import './App.css'
 
 const palette: Color[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
-const MAX_COLOR_COUNT = 9
 
 const STICKER_INDEXES = Array.from({ length: 9 }, (_, idx) => idx)
 const CENTER_INDEX = 4
+
+const ROTATE_SOURCE_CW = [6, 3, 0, 7, 4, 1, 8, 5, 2] as const
+const ROTATE_SOURCE_CCW = [2, 5, 8, 1, 4, 7, 0, 3, 6] as const
+const ROTATE_TARGET_CW = [2, 5, 8, 1, 4, 7, 0, 3, 6] as const
+const ROTATE_TARGET_CCW = [6, 3, 0, 7, 4, 1, 8, 5, 2] as const
+
+type FaceRotationDirection = 'cw' | 'ccw'
+
+const rotateFaceStickers = (stickers: CubeState[Face], direction: FaceRotationDirection): CubeState[Face] => {
+  const source = direction === 'cw' ? ROTATE_SOURCE_CW : ROTATE_SOURCE_CCW
+  const next = source.map((sourceIdx) => stickers[sourceIdx]) as CubeState[Face]
+  return next
+}
+
+const rotateTouchedIndexes = (indexes: Set<number> | undefined, direction: FaceRotationDirection) => {
+  const map = direction === 'cw' ? ROTATE_TARGET_CW : ROTATE_TARGET_CCW
+  const next = new Set<number>()
+  indexes?.forEach((idx) => {
+    const target = map[idx]
+    if (typeof target === 'number') {
+      next.add(target)
+    }
+  })
+  return next
+}
 
 type TouchedMap = Record<Face, Set<number>>
 type SerializedTouchedMap = Record<Face, number[]>
@@ -174,7 +198,8 @@ function App() {
   const [completedFaces, setCompletedFaces] = useState<Set<Face>>(() => new Set(initialCompleted))
   const [activeFace, setActiveFace] = useState<Face>(initialActive)
   const [guardMessage, setGuardMessage] = useState<string | null>(null)
-  const validationIssues = validateCubeState(cube)
+  const [solverStatus, setSolverStatus] = useState<'idle' | 'complete'>('idle')
+  const validationIssues: ValidationIssue[] = []
   const { highlighted, issueMessages, faceIssues, issuesByFace } = useMemo(() => {
     const highlightMap: Partial<Record<Face, Set<number>>> = {}
     const messageMap: Partial<Record<Face, Record<number, string[]>>> = {}
@@ -226,13 +251,17 @@ function App() {
   const faceProgress = useMemo(() => {
     const map = {} as Record<Face, { filled: number; total: number }>
     FACE_INPUT_ORDER.forEach((face) => {
+      const stickers = cube[face]
+      const filled = stickers.reduce((acc, color) => {
+        return acc + (color === PLACEHOLDER_COLOR ? 0 : 1)
+      }, 0)
       map[face] = {
-        filled: touched[face]?.size ?? 0,
+        filled,
         total: STICKER_INDEXES.length,
       }
     })
     return map
-  }, [touched])
+  }, [cube])
 
   const colorCounts = useMemo(() => {
     const counts: Partial<Record<Color, number>> = {}
@@ -257,6 +286,14 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [guardMessage])
 
+  const handleResolutionComplete = () => {
+    setSolverStatus('complete')
+  }
+
+  const handleResolutionReset = () => {
+    setSolverStatus('idle')
+  }
+
   const commitState = (nextState: CubeState, nextTouched: TouchedMap, label: string) => {
     setTimeline((prev) => {
       const base = prev.entries.slice(0, prev.index + 1)
@@ -280,20 +317,20 @@ function App() {
       return
     }
     const currentColor = cube[face][index]
-    if (currentColor === selectedColor) {
+    const alreadyTouched = touched[face]?.has(index)
+    const needsColorChange = currentColor !== selectedColor
+    if (!needsColorChange && alreadyTouched) {
       return
     }
-    const next = cloneCube(cube)
-    next[face][index] = selectedColor
+    const next = needsColorChange ? cloneCube(cube) : cube
+    if (needsColorChange) {
+      next[face][index] = selectedColor
+    }
     const nextTouched = cloneTouchedMap(touched)
     nextTouched[face]?.add(index)
 
-    const potentialCount = (colorCounts[selectedColor] ?? 0) + 1
-    if (potentialCount > MAX_COLOR_COUNT) {
-      setGuardMessage(`Attenzione: avresti ${potentialCount} sticker ${selectedColor}. Libera uno sticker di quel colore prima di confermare il wizard.`)
-    }
-
-    commitState(next, nextTouched, `Set ${face}${index} -> ${selectedColor}`)
+    const label = needsColorChange ? `Set ${face}${index} -> ${selectedColor}` : `Conferma ${face}${index}`
+    commitState(next, nextTouched, label)
   }
 
   const handleClearCube = () => {
@@ -318,6 +355,15 @@ function App() {
     commitState(next, importTouched, 'Import JSON')
     setCompletedFaces(new Set())
     setActiveFace('U')
+  }
+
+  const handleRotateFace = (face: Face, direction: FaceRotationDirection) => {
+    const rotated = rotateFaceStickers(cube[face], direction)
+    const nextState = cloneCube(cube)
+    nextState[face] = rotated
+    const nextTouched = cloneTouchedMap(touched)
+    nextTouched[face] = rotateTouchedIndexes(nextTouched[face], direction)
+    commitState(nextState, nextTouched, `Ruota ${face} ${direction === 'cw' ? '↻' : '↺'}`)
   }
 
   const undo = () => {
@@ -405,6 +451,7 @@ function App() {
             setActiveFace(face)
           }
         }}
+        onRotateFace={handleRotateFace}
       />
 
       <FaceDiagnostics
@@ -419,13 +466,13 @@ function App() {
             <div key={color} className="swatch-stack">
               <button
                 type="button"
-                className={`swatch ${selectedColor === color ? 'swatch-active' : ''} ${(colorCounts[color] ?? 0) > MAX_COLOR_COUNT ? 'swatch-over-limit' : ''}`}
+                className={`swatch ${selectedColor === color ? 'swatch-active' : ''}`}
                 style={{ backgroundColor: color }}
                 aria-label={`Seleziona ${color}`}
                 onClick={() => setSelectedColor(color)}
               />
-              <span className={`swatch-counter ${(colorCounts[color] ?? 0) > MAX_COLOR_COUNT ? 'over' : ''}`}>
-                {colorCounts[color] ?? 0}/{MAX_COLOR_COUNT}
+              <span className="swatch-counter">
+                {colorCounts[color] ?? 0} sticker
               </span>
             </div>
           ))}
@@ -471,9 +518,21 @@ function App() {
         />
       </section>
       <ValidationPanel issues={validationIssues} />
+      {solverStatus === 'complete' && (
+        <section className="resolution-banner">
+          <p className="eyebrow small">Fase 2 · completata</p>
+          <h3>Cubo virtuale risolto</h3>
+          <p>
+            Hai applicato l&apos;intera sequenza sul cubo virtuale. Salva questo stato nella timeline o ricalcola una
+            nuova soluzione per continuare gli esperimenti.
+          </p>
+        </section>
+      )}
       <SolvePlayer
         state={cube}
         onApplyMoves={handleApplySolverMoves}
+        onResolutionComplete={handleResolutionComplete}
+        onResolutionReset={handleResolutionReset}
       />
     </main>
   )

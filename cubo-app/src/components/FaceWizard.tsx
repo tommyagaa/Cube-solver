@@ -7,13 +7,14 @@ type FaceWizardProps = {
   activeFace: Face
   onFaceComplete: (face: Face) => void
   onSetActiveFace: (face: Face) => void
+  onRotateFace: (face: Face, direction: 'cw' | 'ccw') => void
   faceIssues?: Partial<Record<Face, string[]>>
   faceProgress?: Record<Face, { filled: number; total: number }>
 }
 
 const DEFAULT_PROGRESS = { filled: 0, total: 9 }
 
-const FaceWizard = ({ completedFaces, activeFace, onFaceComplete, onSetActiveFace, faceIssues, faceProgress }: FaceWizardProps) => {
+const FaceWizard = ({ completedFaces, activeFace, onFaceComplete, onSetActiveFace, onRotateFace, faceIssues, faceProgress }: FaceWizardProps) => {
   const completedCount = completedFaces.size
   const progress = (completedCount / FACE_INPUT_ORDER.length) * 100
   const activeFaceDone = completedFaces.has(activeFace)
@@ -85,6 +86,18 @@ const FaceWizard = ({ completedFaces, activeFace, onFaceComplete, onSetActiveFac
         >
           Vai alla faccia finale
         </button>
+      </div>
+
+      <div className="wizard-rotate">
+        <p>Ruota la griglia se l&apos;hai inserita con un orientamento diverso.</p>
+        <div className="rotate-actions">
+          <button type="button" className="ghost" onClick={() => onRotateFace(activeFace, 'ccw')}>
+            ↺ Ruota faccia attiva
+          </button>
+          <button type="button" className="ghost" onClick={() => onRotateFace(activeFace, 'cw')}>
+            Ruota faccia attiva ↻
+          </button>
+        </div>
       </div>
 
       <p className="wizard-progress-hint">

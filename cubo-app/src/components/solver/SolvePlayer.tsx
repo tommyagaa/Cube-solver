@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CubeState, Face, Move, MoveModifier } from '../../lib/cube/types'
 import { FACE_INPUT_ORDER } from '../../lib/cube/faceOrder'
 import CubeNet, { type FaceHintMap } from '../CubeNet'
-import type { SolveFrame, SolvePlan } from '../../lib/solver/sequence'
+import type { SolveFrame, SolvePlan, SolveStageId } from '../../lib/solver/sequence'
 import { createSolvePlan, createSolvePlanFromMoves } from '../../lib/solver/sequence'
 
 type ChangedMap = Partial<Record<Face, Set<number>>>
@@ -11,6 +11,7 @@ type PersistedPlanPayload = {
   moves: Move[]
   savedAt: number
   manualCompletion?: number[]
+  appliedCount?: number
 }
 
 const PLAN_STORAGE_KEY = 'cubo-app/solve-plan-v1'
@@ -40,6 +41,20 @@ const safeCopyText = async (text: string): Promise<boolean> => {
     }
   }
   return false
+}
+
+const persistPlan = (moves: Move[], data?: { manual?: Set<number>; applied?: number }, planSignature?: string, stateSignature?: string) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const payload: PersistedPlanPayload = {
+    cubeSignature: planSignature ?? stateSignature ?? '',
+    moves,
+    savedAt: Date.now(),
+    manualCompletion: data?.manual ? Array.from(data.manual) : undefined,
+    appliedCount: data?.applied,
+  }
+  window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(payload))
 }
 
 type MoveInstruction = {
@@ -237,9 +252,11 @@ const buildChangedMap = (previous: CubeState | null, current: CubeState | null):
 export type SolvePlayerProps = {
   state: CubeState
   onApplyMoves?: (moves: Move[], options?: { label?: string }) => void
+  onResolutionComplete?: () => void
+  onResolutionReset?: () => void
 }
 
-const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
+const SolvePlayer = ({ state, onApplyMoves, onResolutionComplete, onResolutionReset }: SolvePlayerProps) => {
   const [plan, setPlan] = useState<SolvePlan | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -250,43 +267,41 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
   const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle')
   const [manualCompletion, setManualCompletion] = useState<Set<number>>(new Set())
   const [appliedCount, setAppliedCount] = useState(0)
+  const totalMoves = plan?.moves.length ?? 0
+  const remainingMoves = Math.max(0, totalMoves - appliedCount)
   const stateSignature = useMemo(() => computeStateSignature(state), [state])
   const intervalRef = useRef<number | null>(null)
-
-    const totalMoves = plan?.moves.length ?? 0
-    const remainingMoves = Math.max(0, totalMoves - appliedCount)
-  const persistPlan = (moves: Move[], manual?: Set<number>) => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    const payload: PersistedPlanPayload = {
-      cubeSignature: planSignature ?? stateSignature,
-      moves,
-      savedAt: Date.now(),
-      manualCompletion: manual ? Array.from(manual) : undefined,
-    }
-    window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(payload))
+  const resolutionRef = useRef(false)
+  const persistCurrentPlan = (moves: Move[], data?: { manual?: Set<number>; applied?: number }) => {
+    persistPlan(moves, data, planSignature ?? stateSignature, stateSignature)
   }
 
-  const ensurePlan = () => {
+  const rebuildPlan = (): SolvePlan | null => {
     try {
       const nextPlan = createSolvePlan(state)
+      const resetSet = new Set<number>()
       setPlan(nextPlan)
       setCurrentIndex(0)
       setError(null)
       setIsPlaying(false)
       setPlanSignature(stateSignature)
       setCopyStatus('idle')
-      setManualCompletion(new Set())
+      setManualCompletion(resetSet)
       setAppliedCount(0)
-      persistPlan(nextPlan.moves)
+      persistCurrentPlan(nextPlan.moves, { manual: resetSet, applied: 0 })
+      return nextPlan
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message)
       } else {
         setError('Errore sconosciuto durante il calcolo della soluzione.')
       }
+      return null
     }
+  }
+
+  const ensurePlan = () => {
+    rebuildPlan()
   }
 
   const frames = plan?.frames ?? []
@@ -296,6 +311,13 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
   const faceHints = useMemo(() => buildFaceHints(currentFrame?.move ?? null), [currentFrame])
 
   const hasPlan = Boolean(plan && plan.moves.length)
+  const whiteCrossStage = plan?.stages.find((stage) => stage.id === 'white-cross')
+  const canApplyWhiteCross = Boolean(
+    whiteCrossStage &&
+      onApplyMoves &&
+      appliedCount >= whiteCrossStage.startMoveIndex &&
+      appliedCount <= whiteCrossStage.endMoveIndex,
+  )
 
   const changedStickers = useMemo(() => {
     if (!plan || !currentFrame) {
@@ -341,7 +363,7 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
         next.add(index)
       }
       if (plan) {
-        persistPlan(plan.moves, next)
+        persistCurrentPlan(plan.moves, { manual: next, applied: appliedCount })
       }
       return next
     })
@@ -367,7 +389,7 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
       setError(null)
       setCopyStatus('idle')
       setManualCompletion(new Set(persisted.manualCompletion ?? []))
-      setAppliedCount(0)
+      setAppliedCount(persisted.appliedCount ?? 0)
     } catch (restoreError) {
       console.warn('Impossibile ripristinare il piano', restoreError)
     }
@@ -390,6 +412,17 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
       setAppliedCount(0)
     }
   }, [plan, planSignature, stateSignature, manualCompletion, appliedCount])
+
+  useEffect(() => {
+    const resolved = Boolean(plan && totalMoves > 0 && remainingMoves === 0)
+    if (resolved && !resolutionRef.current) {
+      resolutionRef.current = true
+      onResolutionComplete?.()
+    } else if (!resolved && resolutionRef.current) {
+      resolutionRef.current = false
+      onResolutionReset?.()
+    }
+  }, [plan, totalMoves, remainingMoves, onResolutionComplete, onResolutionReset])
 
   useEffect(() => {
     if (copyStatus === 'idle' || typeof window === 'undefined') {
@@ -498,7 +531,7 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
     setManualCompletion((prev) => {
       const next = new Set(prev)
       next.add(targetIndex)
-      persistPlan(plan.moves, next)
+      persistCurrentPlan(plan.moves, { manual: next, applied: targetIndex + 1 })
       return next
     })
   }
@@ -521,9 +554,57 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
       for (let i = 0; i < total; i += 1) {
         next.add(i)
       }
-      persistPlan(plan.moves, next)
+      persistCurrentPlan(plan.moves, { manual: next, applied: total })
       return next
     })
+  }
+
+  const handleApplyStage = (stageId: SolveStageId) => {
+    if (!plan || !onApplyMoves) {
+      return
+    }
+    const stage = plan.stages.find((entry) => entry.id === stageId)
+    if (!stage) {
+      return
+    }
+    if (appliedCount < stage.startMoveIndex || appliedCount > stage.endMoveIndex) {
+      return
+    }
+    const movesToApply = plan.moves.slice(appliedCount, stage.endMoveIndex + 1)
+    if (!movesToApply.length) {
+      return
+    }
+    const label = `${stage.label} (${movesToApply.length} mosse)`
+    onApplyMoves(movesToApply, { label })
+    const totalApplied = stage.endMoveIndex + 1
+    setAppliedCount(totalApplied)
+    setManualCompletion((prev) => {
+      const next = new Set(prev)
+      for (let idx = stage.startMoveIndex; idx <= stage.endMoveIndex; idx += 1) {
+        next.add(idx)
+      }
+      persistCurrentPlan(plan.moves, { manual: next, applied: totalApplied })
+      return next
+    })
+  }
+
+  const handleSolveAndApply = () => {
+    if (!onApplyMoves) {
+      rebuildPlan()
+      return
+    }
+    const targetPlan = rebuildPlan()
+    if (!targetPlan || !targetPlan.moves.length) {
+      return
+    }
+    onApplyMoves(targetPlan.moves, { label: 'Risoluzione solver automatica' })
+    const completeSet = new Set<number>()
+    targetPlan.moves.forEach((_, idx) => {
+      completeSet.add(idx)
+    })
+    setManualCompletion(completeSet)
+    setAppliedCount(targetPlan.moves.length)
+    persistCurrentPlan(targetPlan.moves, { manual: completeSet, applied: targetPlan.moves.length })
   }
 
   return (
@@ -537,9 +618,16 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
       </header>
 
       <div className="solve-controls">
-        <button type="button" className="primary" onClick={ensurePlan}>
-          Calcola soluzione
-        </button>
+        <div className="solve-primary-actions">
+          <button type="button" className="primary" onClick={ensurePlan}>
+            Calcola soluzione
+          </button>
+          {onApplyMoves && (
+            <button type="button" className="primary" onClick={handleSolveAndApply}>
+              Calcola e applica sul cubo
+            </button>
+          )}
+        </div>
         <button
           type="button"
           className="ghost"
@@ -604,6 +692,27 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
       {copyStatus === 'copied' && <p className="copy-feedback success">Sequenza copiata negli appunti.</p>}
       {copyStatus === 'error' && <p className="copy-feedback error">Impossibile copiare la sequenza: riprova manualmente.</p>}
 
+      {whiteCrossStage && (
+        <div className="solve-stage-card">
+          <div>
+            <p className="eyebrow small">Metodo a strati</p>
+            <h3>{whiteCrossStage.label}</h3>
+            <p className="stage-description">{whiteCrossStage.description}</p>
+            <p className="stage-moves">{whiteCrossStage.previewMoves.join(' ')}</p>
+          </div>
+          {onApplyMoves && (
+            <button
+              type="button"
+              className="ghost"
+              disabled={!canApplyWhiteCross}
+              onClick={() => handleApplyStage('white-cross')}
+            >
+              Applica croce ({whiteCrossStage.moveCount} mosse)
+            </button>
+          )}
+        </div>
+      )}
+
       {error && <p className="solve-error">{error}</p>}
 
       {currentFrame && (
@@ -662,6 +771,10 @@ const SolvePlayer = ({ state, onApplyMoves }: SolvePlayerProps) => {
           </button>
           <p className="apply-progress">Cubo virtuale: {appliedCount}/{totalMoves}</p>
         </div>
+      )}
+
+      {plan && totalMoves > 0 && remainingMoves === 0 && (
+        <p className="solve-success">✅ Tutte le mosse sono state applicate al cubo virtuale.</p>
       )}
     </section>
   )

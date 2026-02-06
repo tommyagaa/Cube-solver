@@ -21,10 +21,23 @@ export type SolveFrame = {
   phase: SolvePhaseId
 }
 
+export type SolveStageId = 'white-cross' | 'full-solve'
+
+export type SolveStage = {
+  id: SolveStageId
+  label: string
+  description: string
+  startMoveIndex: number
+  endMoveIndex: number
+  moveCount: number
+  previewMoves: Move[]
+}
+
 export type SolvePlan = {
   phases: SolvePhase[]
   moves: Move[]
   frames: SolveFrame[]
+  stages: SolveStage[]
 }
 
 const SOLVE_PHASES: SolvePhase[] = [
@@ -79,8 +92,7 @@ const toCubejsString = (state: CubeState): string => {
 }
 
 const deriveSolutionMoves = (state: CubeState): Move[] => {
-  const cube = new Cube()
-  cube.fromString(toCubejsString(state))
+  const cube = (Cube as unknown as { fromString: (input: string) => InstanceType<typeof Cube> }).fromString(toCubejsString(state))
   const solution = cube.solve()?.trim()
   if (!solution) {
     return []
@@ -113,12 +125,70 @@ const buildFrames = (initial: CubeState, moves: Move[]): SolveFrame[] => {
   return frames
 }
 
+const WHITE_CROSS_EDGES = [
+  { upIndex: 7, face: 'F' as Face, index: 1 },
+  { upIndex: 5, face: 'R' as Face, index: 1 },
+  { upIndex: 1, face: 'B' as Face, index: 1 },
+  { upIndex: 3, face: 'L' as Face, index: 1 },
+]
+
+const isWhiteCrossSolved = (state: CubeState) => {
+  if (state.U[4] !== 'white') {
+    return false
+  }
+  return WHITE_CROSS_EDGES.every(({ upIndex, face, index }) => {
+    const upSticker = state.U[upIndex]
+    const adjacentColor = state[face][index]
+    return upSticker === 'white' && adjacentColor === state[face][4]
+  })
+}
+
+const buildStages = (frames: SolveFrame[], moves: Move[]): SolveStage[] => {
+  const stages: SolveStage[] = []
+  let whiteCrossFrameIndex: number | null = null
+
+  for (let i = 0; i < frames.length; i += 1) {
+    if (isWhiteCrossSolved(frames[i].state)) {
+      whiteCrossFrameIndex = i
+      break
+    }
+  }
+
+  if (whiteCrossFrameIndex !== null && whiteCrossFrameIndex > 0) {
+    const moveCount = whiteCrossFrameIndex
+    stages.push({
+      id: 'white-cross',
+      label: 'Croce bianca',
+      description: 'Completa la croce sulla faccia superiore mantenendo gli spigoli allineati.',
+      startMoveIndex: 0,
+      endMoveIndex: moveCount - 1,
+      moveCount,
+      previewMoves: moves.slice(0, moveCount),
+    })
+  }
+
+  if (moves.length) {
+    stages.push({
+      id: 'full-solve',
+      label: 'Risoluzione completa',
+      description: 'Sequenza completa generata dal solver.',
+      startMoveIndex: 0,
+      endMoveIndex: moves.length - 1,
+      moveCount: moves.length,
+      previewMoves: moves,
+    })
+  }
+
+  return stages
+}
+
 const buildPlan = (state: CubeState, moves: Move[]): SolvePlan => {
   const frames = buildFrames(state, moves)
   return {
     phases: SOLVE_PHASES,
     moves,
     frames,
+    stages: buildStages(frames, moves),
   }
 }
 
