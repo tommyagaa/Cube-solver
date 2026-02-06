@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CubeState, Face, Move, MoveModifier } from '../../lib/cube/types'
 import { FACE_INPUT_ORDER } from '../../lib/cube/faceOrder'
-import CubeNet from '../CubeNet'
+import CubeNet, { type FaceHintMap } from '../CubeNet'
 import type { SolveFrame, SolvePlan } from '../../lib/solver/sequence'
 import { createSolvePlan, createSolvePlanFromMoves } from '../../lib/solver/sequence'
 
@@ -48,6 +48,15 @@ type MoveInstruction = {
 }
 
 type CopyStatus = 'idle' | 'copied' | 'error'
+
+const SUPPORT_FACE_MAP: Record<Face, Face> = {
+  U: 'F',
+  D: 'F',
+  F: 'U',
+  B: 'U',
+  L: 'F',
+  R: 'F',
+}
 
 const FACE_GUIDES: Record<Face, { label: string; action: string; orientation: string }> = {
   U: {
@@ -113,6 +122,29 @@ const describeMove = (move: Move | null): MoveInstruction => {
     detail: `${faceGuide.action} ${modifierGuide.detail}.`,
     orientation: faceGuide.orientation,
   }
+}
+
+const buildFaceHints = (move: Move | null): FaceHintMap => {
+  if (!move) {
+    return {}
+  }
+  const face = move[0] as Face
+  const hints: FaceHintMap = {
+    [face]: {
+      icon: '↻',
+      label: 'Ruota qui',
+      variant: 'primary',
+    },
+  }
+  const supportFace = SUPPORT_FACE_MAP[face]
+  if (supportFace && supportFace !== face) {
+    hints[supportFace] = {
+      icon: '✋',
+      label: 'Mantieni frontale',
+      variant: 'secondary',
+    }
+  }
+  return hints
 }
 
 const buildChangedMap = (previous: CubeState | null, current: CubeState | null): ChangedMap => {
@@ -185,6 +217,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
   const currentFrame: SolveFrame | null = frames[currentIndex] ?? null
   const nextMove = plan?.moves[currentIndex] ?? null
   const moveInstruction = useMemo(() => describeMove(currentFrame?.move ?? null), [currentFrame])
+  const faceHints = useMemo(() => buildFaceHints(currentFrame?.move ?? null), [currentFrame])
 
   const hasPlan = Boolean(plan && plan.moves.length)
 
@@ -455,6 +488,7 @@ const SolvePlayer = ({ state }: SolvePlayerProps) => {
           <CubeNet
             state={currentFrame.state}
             changedStickers={changedStickers}
+            faceHints={faceHints}
           />
         </div>
       )}
