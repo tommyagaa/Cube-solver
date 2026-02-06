@@ -1,4 +1,6 @@
 Rubick · Designer e Solver del Cubo 3x3
+
+
 Applicazione React + Vite che guida l'utente nella mappatura dello stato di un cubo di Rubik reale, mostra ogni mossa in 2D e 3D e permette di seguire passo dopo passo la sequenza di risoluzione proposta dal solver integrato.
 
 Stato del progetto: quasi completo. Tutte le funzionalità principali sono operative, ma rimane da ottimizzare il bundle (warning oltre 500 kB) e rifinire alcuni dettagli UX/minor bugfix.
