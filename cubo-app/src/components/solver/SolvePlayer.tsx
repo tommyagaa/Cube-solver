@@ -311,13 +311,17 @@ const SolvePlayer = ({ state, onApplyMoves, onResolutionComplete, onResolutionRe
   const faceHints = useMemo(() => buildFaceHints(currentFrame?.move ?? null), [currentFrame])
 
   const hasPlan = Boolean(plan && plan.moves.length)
-  const whiteCrossStage = plan?.stages.find((stage) => stage.id === 'white-cross')
-  const canApplyWhiteCross = Boolean(
-    whiteCrossStage &&
-      onApplyMoves &&
-      appliedCount >= whiteCrossStage.startMoveIndex &&
-      appliedCount <= whiteCrossStage.endMoveIndex,
-  )
+  const stageById = (stageId: SolveStageId) => plan?.stages.find((stage) => stage.id === stageId)
+  const whiteCrossStage = stageById('white-cross')
+  const firstLayerStage = stageById('first-layer')
+  const secondLayerStage = stageById('second-layer')
+
+  const canApplyStage = (stage: ReturnType<typeof stageById>) => {
+    if (!stage || !onApplyMoves) {
+      return false
+    }
+    return appliedCount >= stage.startMoveIndex && appliedCount <= stage.endMoveIndex
+  }
 
   const changedStickers = useMemo(() => {
     if (!plan || !currentFrame) {
@@ -692,26 +696,28 @@ const SolvePlayer = ({ state, onApplyMoves, onResolutionComplete, onResolutionRe
       {copyStatus === 'copied' && <p className="copy-feedback success">Sequenza copiata negli appunti.</p>}
       {copyStatus === 'error' && <p className="copy-feedback error">Impossibile copiare la sequenza: riprova manualmente.</p>}
 
-      {whiteCrossStage && (
-        <div className="solve-stage-card">
-          <div>
-            <p className="eyebrow small">Metodo a strati</p>
-            <h3>{whiteCrossStage.label}</h3>
-            <p className="stage-description">{whiteCrossStage.description}</p>
-            <p className="stage-moves">{whiteCrossStage.previewMoves.join(' ')}</p>
+      {[whiteCrossStage, firstLayerStage, secondLayerStage]
+        .filter(Boolean)
+        .map((stage) => (
+          <div key={stage!.id} className="solve-stage-card">
+            <div>
+              <p className="eyebrow small">Metodo a strati</p>
+              <h3>{stage!.label}</h3>
+              <p className="stage-description">{stage!.description}</p>
+              <p className="stage-moves">{stage!.previewMoves.join(' ')}</p>
+            </div>
+            {onApplyMoves && (
+              <button
+                type="button"
+                className="ghost"
+                disabled={!canApplyStage(stage)}
+                onClick={() => handleApplyStage(stage!.id)}
+              >
+                Applica {stage!.label.toLowerCase()} ({stage!.moveCount} mosse)
+              </button>
+            )}
           </div>
-          {onApplyMoves && (
-            <button
-              type="button"
-              className="ghost"
-              disabled={!canApplyWhiteCross}
-              onClick={() => handleApplyStage('white-cross')}
-            >
-              Applica croce ({whiteCrossStage.moveCount} mosse)
-            </button>
-          )}
-        </div>
-      )}
+        ))}
 
       {error && <p className="solve-error">{error}</p>}
 

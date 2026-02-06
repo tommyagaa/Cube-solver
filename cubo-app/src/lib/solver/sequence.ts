@@ -21,7 +21,7 @@ export type SolveFrame = {
   phase: SolvePhaseId
 }
 
-export type SolveStageId = 'white-cross' | 'full-solve'
+export type SolveStageId = 'white-cross' | 'first-layer' | 'second-layer' | 'full-solve'
 
 export type SolveStage = {
   id: SolveStageId
@@ -55,7 +55,20 @@ const SOLVE_PHASES: SolvePhase[] = [
 
 const CUBEJS_FACE_ORDER: Face[] = ['U', 'R', 'F', 'D', 'L', 'B']
 
-const COLOR_TO_FACE_CODE: Record<Exclude<Color, 'neutral'>, string> = {
+type StandardColor = Exclude<Color, 'neutral'>
+
+const STANDARD_COLORS: StandardColor[] = ['white', 'yellow', 'green', 'blue', 'orange', 'red']
+
+const REQUIRED_COLOR_COUNTS: Record<StandardColor, number> = {
+  white: 9,
+  yellow: 9,
+  green: 9,
+  blue: 9,
+  orange: 9,
+  red: 9,
+}
+
+const COLOR_TO_FACE_CODE: Record<StandardColor, string> = {
   white: 'U',
   yellow: 'D',
   green: 'F',
@@ -76,8 +89,45 @@ const ensureNoPlaceholders = (state: CubeState) => {
   })
 }
 
+const countColors = (state: CubeState) => {
+  const counts: Record<StandardColor, number> = {
+    white: 0,
+    yellow: 0,
+    green: 0,
+    blue: 0,
+    orange: 0,
+    red: 0,
+  }
+  CUBEJS_FACE_ORDER.forEach((face) => {
+    state[face].forEach((color) => {
+      if (color !== 'neutral') {
+        counts[color as StandardColor] += 1
+      }
+    })
+  })
+  return counts
+}
+
+const ensureValidColorDistribution = (state: CubeState) => {
+  const counts = countColors(state)
+  const issues: string[] = []
+  STANDARD_COLORS.forEach((color) => {
+    if (counts[color] !== REQUIRED_COLOR_COUNTS[color]) {
+      issues.push(`${color}: ${counts[color]}/${REQUIRED_COLOR_COUNTS[color]}`)
+    }
+  })
+  if (issues.length) {
+    throw new Error(
+      `Impossibile calcolare una soluzione: distribuzione colori non valida (${issues.join(
+        ', ',
+      )}). Ogni colore deve comparire esattamente 9 volte.`,
+    )
+  }
+}
+
 const toCubejsString = (state: CubeState): string => {
   ensureNoPlaceholders(state)
+  ensureValidColorDistribution(state)
   const facelets: string[] = []
   CUBEJS_FACE_ORDER.forEach((face) => {
     state[face].forEach((color) => {
@@ -91,8 +141,58 @@ const toCubejsString = (state: CubeState): string => {
   return facelets.join('')
 }
 
+type CubeInternal = InstanceType<typeof Cube> & {
+  cp: number[]
+  co: number[]
+  ep: number[]
+  eo: number[]
+}
+
+const orientationSumIsValid = (orientations: number[], modulo: number) => {
+  const sum = orientations.reduce((acc, value) => acc + value, 0)
+  return sum % modulo === 0
+}
+
+const permutationParity = (permutation: number[]) => {
+  const visited = new Array(permutation.length).fill(false)
+  let parity = 0
+  for (let i = 0; i < permutation.length; i += 1) {
+    if (visited[i]) {
+      continue
+    }
+    let cycleLength = 0
+    let j = i
+    while (!visited[j]) {
+      visited[j] = true
+      j = permutation[j]
+      cycleLength += 1
+    }
+    if (cycleLength > 0) {
+      parity = (parity + cycleLength - 1) % 2
+    }
+  }
+  return parity
+}
+
+const ensureReachableConfiguration = (cube: CubeInternal) => {
+  if (!orientationSumIsValid(cube.co, 3)) {
+    throw new Error('Impossibile calcolare una soluzione: orientamento degli angoli non valido.')
+  }
+  if (!orientationSumIsValid(cube.eo, 2)) {
+    throw new Error('Impossibile calcolare una soluzione: orientamento degli spigoli non valido.')
+  }
+  const cornerParity = permutationParity(cube.cp)
+  const edgeParity = permutationParity(cube.ep)
+  if (cornerParity !== edgeParity) {
+    throw new Error('Impossibile calcolare una soluzione: permutazione non raggiungibile (parita errata).')
+  }
+}
+
 const deriveSolutionMoves = (state: CubeState): Move[] => {
-  const cube = (Cube as unknown as { fromString: (input: string) => InstanceType<typeof Cube> }).fromString(toCubejsString(state))
+  const cube = (Cube as unknown as { fromString: (input: string) => InstanceType<typeof Cube> }).fromString(
+    toCubejsString(state),
+  ) as CubeInternal
+  ensureReachableConfiguration(cube)
   const solution = cube.solve()?.trim()
   if (!solution) {
     return []
@@ -132,6 +232,20 @@ const WHITE_CROSS_EDGES = [
   { upIndex: 3, face: 'L' as Face, index: 1 },
 ]
 
+const WHITE_CORNERS: Array<{ upIndex: number; faces: Array<{ face: Face; index: number }> }> = [
+  { upIndex: 8, faces: [{ face: 'F', index: 2 }, { face: 'R', index: 0 }] },
+  { upIndex: 6, faces: [{ face: 'F', index: 0 }, { face: 'L', index: 2 }] },
+  { upIndex: 0, faces: [{ face: 'B', index: 2 }, { face: 'L', index: 0 }] },
+  { upIndex: 2, faces: [{ face: 'B', index: 0 }, { face: 'R', index: 2 }] },
+]
+
+const SECOND_LAYER_EDGES: Array<{ faces: Array<{ face: Face; index: number }> }> = [
+  { faces: [{ face: 'F', index: 3 }, { face: 'L', index: 5 }] },
+  { faces: [{ face: 'F', index: 5 }, { face: 'R', index: 3 }] },
+  { faces: [{ face: 'B', index: 5 }, { face: 'L', index: 3 }] },
+  { faces: [{ face: 'B', index: 3 }, { face: 'R', index: 5 }] },
+]
+
 const isWhiteCrossSolved = (state: CubeState) => {
   if (state.U[4] !== 'white') {
     return false
@@ -143,13 +257,53 @@ const isWhiteCrossSolved = (state: CubeState) => {
   })
 }
 
+const isFirstLayerSolved = (state: CubeState) => {
+  if (!isWhiteCrossSolved(state)) {
+    return false
+  }
+  return WHITE_CORNERS.every(({ upIndex, faces }) => {
+    if (state.U[upIndex] !== 'white') {
+      return false
+    }
+    return faces.every(({ face, index }) => state[face][index] === state[face][4])
+  })
+}
+
+const isSecondLayerSolved = (state: CubeState) => {
+  if (!isFirstLayerSolved(state)) {
+    return false
+  }
+  const topColor = state.U[4]
+  const bottomColor = state.D[4]
+  return SECOND_LAYER_EDGES.every(({ faces }) => {
+    return faces.every(({ face, index }) => {
+      const color = state[face][index]
+      if (color === topColor || color === bottomColor) {
+        return false
+      }
+      return color === state[face][4]
+    })
+  })
+}
+
 const buildStages = (frames: SolveFrame[], moves: Move[]): SolveStage[] => {
   const stages: SolveStage[] = []
   let whiteCrossFrameIndex: number | null = null
+  let firstLayerFrameIndex: number | null = null
+  let secondLayerFrameIndex: number | null = null
 
   for (let i = 0; i < frames.length; i += 1) {
-    if (isWhiteCrossSolved(frames[i].state)) {
+    const frameState = frames[i].state
+    if (whiteCrossFrameIndex == null && isWhiteCrossSolved(frameState)) {
       whiteCrossFrameIndex = i
+    }
+    if (firstLayerFrameIndex == null && isFirstLayerSolved(frameState)) {
+      firstLayerFrameIndex = i
+    }
+    if (secondLayerFrameIndex == null && isSecondLayerSolved(frameState)) {
+      secondLayerFrameIndex = i
+    }
+    if (whiteCrossFrameIndex != null && firstLayerFrameIndex != null && secondLayerFrameIndex != null) {
       break
     }
   }
@@ -160,6 +314,32 @@ const buildStages = (frames: SolveFrame[], moves: Move[]): SolveStage[] => {
       id: 'white-cross',
       label: 'Croce bianca',
       description: 'Completa la croce sulla faccia superiore mantenendo gli spigoli allineati.',
+      startMoveIndex: 0,
+      endMoveIndex: moveCount - 1,
+      moveCount,
+      previewMoves: moves.slice(0, moveCount),
+    })
+  }
+
+  if (firstLayerFrameIndex !== null && firstLayerFrameIndex > 0) {
+    const moveCount = firstLayerFrameIndex
+    stages.push({
+      id: 'first-layer',
+      label: 'Primo strato',
+      description: 'Completa gli angoli bianchi e allinea il primo strato.',
+      startMoveIndex: 0,
+      endMoveIndex: moveCount - 1,
+      moveCount,
+      previewMoves: moves.slice(0, moveCount),
+    })
+  }
+
+  if (secondLayerFrameIndex !== null && secondLayerFrameIndex > 0) {
+    const moveCount = secondLayerFrameIndex
+    stages.push({
+      id: 'second-layer',
+      label: 'Secondo strato',
+      description: 'Inserisci gli spigoli della fascia centrale senza alterare il bianco.',
       startMoveIndex: 0,
       endMoveIndex: moveCount - 1,
       moveCount,
